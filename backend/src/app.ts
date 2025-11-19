@@ -1,3 +1,8 @@
+/**
+ * Express application factory.
+ * Configures middleware, routes, and health check endpoints.
+ */
+
 import cors from 'cors';
 import express from 'express';
 
@@ -5,15 +10,19 @@ import { env } from './config/env';
 import { checkDatabase } from './db/pool';
 import routes from './routes';
 
+/**
+ * Creates and configures the Express application.
+ * @returns Configured Express app instance
+ */
 export const createApp = () => {
   const app = express();
-
   app.set('trust proxy', true);
   app.use(cors());
   app.use(express.json());
 
   app.use('/api', routes);
 
+  // Root endpoint - service information
   app.get('/', (_req, res) => {
     res.json({
       service: 'story-bytes-api',
@@ -22,6 +31,7 @@ export const createApp = () => {
     });
   });
 
+  // Health check endpoint - verifies database connectivity
   app.get('/health', async (_req, res) => {
     try {
       await checkDatabase();
@@ -42,6 +52,7 @@ export const createApp = () => {
     }
   });
 
+  // Configuration endpoint - returns non-sensitive config info
   app.get('/config', (_req, res) => {
     res.json({
       port: env.port,

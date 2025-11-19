@@ -1,8 +1,18 @@
+/**
+ * Environment variable configuration and validation.
+ * Uses Zod for schema validation and type safety.
+ */
+
 import { z } from 'zod';
 import dotenv from 'dotenv';
 
+// Load environment variables from .env file
 dotenv.config();
 
+/**
+ * Environment variable schema definition.
+ * Validates and coerces environment variables to their expected types.
+ */
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5001),
   DATABASE_URL: z.string().optional(),
@@ -16,6 +26,7 @@ const envSchema = z.object({
   DB_NAME: z.string().optional(),
 });
 
+// Validate environment variables
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
@@ -25,12 +36,19 @@ if (!parsed.success) {
 
 const { data } = parsed;
 
-// Construct DATABASE_URL if not present but components are
+/**
+ * Constructs DATABASE_URL from individual components if not provided directly.
+ * Falls back to individual DB_* variables if DATABASE_URL is not set.
+ */
 const databaseUrl = data.DATABASE_URL ||
   (data.DB_USER && data.DB_HOST && data.DB_NAME
     ? `postgresql://${data.DB_USER}:${data.DB_PASSWORD || ''}@${data.DB_HOST}:${data.DB_PORT || 5432}/${data.DB_NAME}`
     : undefined);
 
+/**
+ * Validated and processed environment configuration.
+ * Exported for use throughout the application.
+ */
 export const env = {
   ...data,
   port: data.PORT,

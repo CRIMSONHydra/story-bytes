@@ -6,7 +6,7 @@ This folder will house the REST API / orchestration layer built with **Express**
 - provide retrieval and summarisation APIs used by the React client;
 - enqueue asynchronous jobs (OCR, embeddings) by publishing to the worker queue.
 
-# Getting started
+## Getting started
 
 ```bash
 # Install dependencies (safe to re-run)

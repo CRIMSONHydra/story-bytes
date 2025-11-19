@@ -1,10 +1,19 @@
+/**
+ * Script to verify Google Search API credentials.
+ * Tests the API key and Custom Search Engine ID (CX) by making a test request.
+ */
+
 import path from 'path';
 import dotenv from 'dotenv';
 import axios from 'axios';
 
-// Ensure .env is loaded from the parent directory
+// Ensure .env is loaded from the parent directory (project root)
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 
+/**
+ * Verifies Google Search API key and CX by making a test search request.
+ * @returns true if verification succeeds, false otherwise
+ */
 const verifySearch = async () => {
   console.log('\nChecking Google Search API Key & CX...');
   const key = process.env.GOOGLE_SEARCH_API_KEY;
@@ -35,15 +44,23 @@ const verifySearch = async () => {
       console.error(`❌ Google Search failed with status: ${response.status}`);
       return false;
     }
-  } catch (error: any) {
-    console.error('❌ Google Search API Key failed:', error.message);
-    if (error.response) {
-      console.error('   Details:', JSON.stringify(error.response.data, null, 2));
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ Google Search API Key failed:', errorMessage);
+    if (error && typeof error === 'object' && 'response' in error) {
+      const axiosError = error as { response?: { data?: unknown } };
+      if (axiosError.response?.data) {
+        console.error('   Details:', JSON.stringify(axiosError.response.data, null, 2));
+      }
     }
     return false;
   }
 };
 
+/**
+ * Main execution function.
+ * Runs all verification checks and exits with appropriate status code.
+ */
 const run = async () => {
   const searchOk = await verifySearch();
 
@@ -56,4 +73,5 @@ const run = async () => {
   }
 };
 
+// Execute verification
 run();
