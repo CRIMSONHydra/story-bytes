@@ -2,7 +2,7 @@
 -- Requires: PostgreSQL 15+, pgcrypto (for gen_random_uuid), pgvector (for embeddings)
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS vector;
+-- CREATE EXTENSION IF NOT EXISTS vector;
 
 -- ---------------------------------------------------------------------------
 -- Core entities
@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS chapter_embeddings (
     chapter_id      UUID PRIMARY KEY REFERENCES chapters(chapter_id) ON DELETE CASCADE,
     model           TEXT NOT NULL,
     dimensions      INT NOT NULL,
-    vector          VECTOR,
+    vector          FLOAT8[],
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS block_embeddings (
     block_id        UUID REFERENCES chapter_blocks(block_id) ON DELETE CASCADE,
     model           TEXT NOT NULL,
     dimensions      INT NOT NULL,
-    vector          VECTOR,
+    vector          FLOAT8[],
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (block_id, model)
 );
@@ -137,13 +137,33 @@ CREATE INDEX IF NOT EXISTS idx_annotations_story
 -- Utility views (optional)
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE VIEW chapter_text_blocks AS
-SELECT
-    cb.block_id,
-    cb.chapter_id,
-    cb.block_index,
-    cb.text_content
-FROM chapter_blocks cb
-WHERE cb.block_type = 'text';
+
+
+-- ---------------------------------------------------------------------------
+-- External Knowledge (Web Search Results)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS external_knowledge (
+    knowledge_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    story_id        UUID REFERENCES stories(story_id) ON DELETE CASCADE,
+    content         TEXT NOT NULL,
+    source_url      TEXT,
+    knowledge_type  TEXT CHECK (knowledge_type IN ('fact', 'theory', 'speculation')),
+    metadata        JSONB DEFAULT '{}',
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_embeddings (
+    knowledge_id    UUID REFERENCES external_knowledge(knowledge_id) ON DELETE CASCADE,
+    model           TEXT NOT NULL,
+    dimensions      INT NOT NULL,
+    vector          FLOAT8[],
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (knowledge_id, model)
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_story
+    ON external_knowledge (story_id);
+
 
 

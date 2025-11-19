@@ -3,6 +3,7 @@ import express from 'express';
 
 import { env } from './config/env';
 import { checkDatabase } from './db/pool';
+import routes from './routes';
 
 export const createApp = () => {
   const app = express();
@@ -10,6 +11,8 @@ export const createApp = () => {
   app.set('trust proxy', true);
   app.use(cors());
   app.use(express.json());
+
+  app.use('/api', routes);
 
   app.get('/', (_req, res) => {
     res.json({

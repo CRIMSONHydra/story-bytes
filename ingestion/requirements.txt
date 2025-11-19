@@ -1,0 +1,7 @@
+psycopg2-binary
+sentence-transformers
+python-dotenv
+pgvector
+ebooklib
+beautifulsoup4
+lxml

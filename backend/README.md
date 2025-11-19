@@ -39,9 +39,32 @@ Create a `.env` file (not committed) to override these as needed.
 - Flat-config **ESLint** (`npm run lint` / `npm run lint:fix`)
 - **Vitest** + Supertest for API tests (`npm run test`, `npm run test:watch`)
 
+## API Endpoints
+
+### POST /api/chat
+
+Answer a user question based on the story context.
+
+**Request Body:**
+
+```json
+{
+  "query": "Who is the protagonist?",
+  "storyId": "optional-uuid",
+  "currentChapter": 5
+}
+```
+
+**Response:**
+
+```json
+{
+  "answer": "The protagonist is..."
+}
+```
+
 ## TODO / Next steps
 
 - Add database migration tooling (Drizzle ORM / Knex).
-- Flesh out routing, controllers, and validation (`zod`).
 - Integrate Redis/BullMQ for async jobs (OCR/embeddings).
 - Add request logging / OpenTelemetry tracing.
