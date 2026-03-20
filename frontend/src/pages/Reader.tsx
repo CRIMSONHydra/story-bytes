@@ -33,10 +33,9 @@ export default function Reader() {
     
     if (!storyId || !chapterId) return;
 
-    setLoading(true);
     fetch(`http://localhost:5001/api/stories/${storyId}/chapters`)
       .then(res => res.json())
-      .then((chapters: any[]) => {
+      .then((chapters: { chapter_id: string; chapter_order: number }[]) => {
         const targetOrder = parseInt(chapterId, 10);
         const targetChapter = chapters.find(c => c.chapter_order === targetOrder);
         

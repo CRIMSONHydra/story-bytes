@@ -2,7 +2,7 @@
 -- Requires: PostgreSQL 15+, pgcrypto (for gen_random_uuid), pgvector (for embeddings)
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
--- CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- ---------------------------------------------------------------------------
 -- Core entities
@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS chapter_embeddings (
     chapter_id      UUID PRIMARY KEY REFERENCES chapters(chapter_id) ON DELETE CASCADE,
     model           TEXT NOT NULL,
     dimensions      INT NOT NULL,
-    vector          FLOAT8[],
+    vector          vector(768),
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -103,13 +103,19 @@ CREATE TABLE IF NOT EXISTS block_embeddings (
     block_id        UUID REFERENCES chapter_blocks(block_id) ON DELETE CASCADE,
     model           TEXT NOT NULL,
     dimensions      INT NOT NULL,
-    vector          FLOAT8[],
+    vector          vector(768),
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (block_id, model)
 );
 
 CREATE INDEX IF NOT EXISTS idx_block_embeddings_model
     ON block_embeddings (model);
+
+CREATE INDEX IF NOT EXISTS idx_block_embeddings_vector
+    ON block_embeddings USING hnsw (vector vector_cosine_ops);
+
+CREATE INDEX IF NOT EXISTS idx_chapter_embeddings_vector
+    ON chapter_embeddings USING hnsw (vector vector_cosine_ops);
 
 -- ---------------------------------------------------------------------------
 -- Annotations (user notes, QA spans, spoiler tags, etc.)
@@ -157,13 +163,16 @@ CREATE TABLE IF NOT EXISTS knowledge_embeddings (
     knowledge_id    UUID REFERENCES external_knowledge(knowledge_id) ON DELETE CASCADE,
     model           TEXT NOT NULL,
     dimensions      INT NOT NULL,
-    vector          FLOAT8[],
+    vector          vector(768),
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (knowledge_id, model)
 );
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_story
     ON external_knowledge (story_id);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_vector
+    ON knowledge_embeddings USING hnsw (vector vector_cosine_ops);
 
 
 

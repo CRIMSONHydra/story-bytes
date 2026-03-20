@@ -2,12 +2,13 @@ import argparse
 import json
 import logging
 import os
+import time
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 
 import psycopg2
 from psycopg2.extras import Json
-from sentence_transformers import SentenceTransformer
+from google import genai
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -16,12 +17,22 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
+# Embedding model configuration
+EMBEDDING_MODEL = "text-embedding-004"
+EMBEDDING_DIMENSIONS = 768
+EMBEDDING_BATCH_SIZE = 100  # Gemini supports batching
+
 # Database connection
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")
 DB_NAME = os.getenv("DB_NAME", "postgres")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+
+# Gemini API
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    logging.warning("GEMINI_API_KEY not set — embeddings will be skipped")
 
 def get_db_connection():
     try:
@@ -85,14 +96,25 @@ def insert_story(cursor, story_data: Dict[str, Any]) -> str:
     )
     return cursor.fetchone()[0]
 
-def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], model: SentenceTransformer):
-    """Insert chapters and blocks."""
+def generate_embeddings_batch(client: genai.Client, texts: List[str]) -> List[List[float]]:
+    """Generate embeddings for a batch of texts using Gemini text-embedding-004."""
+    response = client.models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=texts,
+    )
+    return [e.values for e in response.embeddings]
+
+
+def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], client: genai.Client | None):
+    """Insert chapters and blocks, generating embeddings via Gemini API."""
     logging.info(f"Processing {len(chapters)} chapters...")
-    
+
     # Clear existing chapters for this story to avoid duplicates/conflicts on re-run
-    # (In a real prod system, we might want smarter updates, but for prototype replace is fine)
     cursor.execute("DELETE FROM chapters WHERE story_id = %s", (story_id,))
-    
+
+    # Collect all text blocks first, insert chapters/blocks, then batch-embed
+    pending_embeddings: List[Dict[str, Any]] = []  # [{block_id, text}]
+
     for chapter in chapters:
         cursor.execute(
             """
@@ -110,7 +132,7 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], model
             )
         )
         chapter_id = cursor.fetchone()[0]
-        
+
         # Insert Blocks
         blocks = chapter.get("content", [])
         for idx, block in enumerate(blocks):
@@ -118,7 +140,7 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], model
             text_content = block.get("text")
             image_src = block.get("src")
             image_alt = block.get("alt")
-            
+
             cursor.execute(
                 """
                 INSERT INTO chapter_blocks (chapter_id, block_index, block_type, text_content, image_src, image_alt)
@@ -135,22 +157,56 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], model
                 )
             )
             block_id = cursor.fetchone()[0]
-            
-            # Generate Embedding if text
+
+            # Queue text blocks for batch embedding
             if block_type == 'text' and text_content and len(text_content.strip()) > 10:
-                embedding = model.encode(text_content)
-                cursor.execute(
-                    """
-                    INSERT INTO block_embeddings (block_id, model, dimensions, vector)
-                    VALUES (%s, %s, %s, %s)
-                    """,
-                    (
-                        block_id,
-                        'all-MiniLM-L6-v2', # Default sentence-transformer model
-                        384,
-                        embedding.tolist()
+                pending_embeddings.append({"block_id": block_id, "text": text_content})
+
+    # Generate embeddings in batches
+    if not client:
+        logging.warning("No Gemini client — skipping embedding generation")
+        return
+
+    total = len(pending_embeddings)
+    logging.info(f"Generating embeddings for {total} text blocks...")
+
+    for i in range(0, total, EMBEDDING_BATCH_SIZE):
+        batch = pending_embeddings[i:i + EMBEDDING_BATCH_SIZE]
+        texts = [item["text"] for item in batch]
+
+        try:
+            embeddings = generate_embeddings_batch(client, texts)
+        except Exception as e:
+            logging.error(f"Embedding batch {i // EMBEDDING_BATCH_SIZE + 1} failed: {e}")
+            # Retry with smaller sub-batches on failure
+            for item in batch:
+                try:
+                    single = generate_embeddings_batch(client, [item["text"]])
+                    cursor.execute(
+                        """
+                        INSERT INTO block_embeddings (block_id, model, dimensions, vector)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (item["block_id"], EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, str(single[0]))
                     )
-                )
+                except Exception as inner_e:
+                    logging.error(f"Skipping block {item['block_id']}: {inner_e}")
+            continue
+
+        for item, emb in zip(batch, embeddings):
+            cursor.execute(
+                """
+                INSERT INTO block_embeddings (block_id, model, dimensions, vector)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (item["block_id"], EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, str(emb))
+            )
+
+        logging.info(f"  Embedded {min(i + EMBEDDING_BATCH_SIZE, total)}/{total} blocks")
+
+        # Rate limiting: Gemini has quotas, small delay between batches
+        if i + EMBEDDING_BATCH_SIZE < total:
+            time.sleep(0.5)
 
 def main():
     parser = argparse.ArgumentParser(description="Load processed JSON into Postgres.")
@@ -161,9 +217,13 @@ def main():
         logging.error(f"File not found: {args.input}")
         return
 
-    # Initialize Embedding Model
-    logging.info("Loading embedding model (all-MiniLM-L6-v2)...")
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    # Initialize Gemini client for embeddings
+    client = None
+    if GEMINI_API_KEY:
+        logging.info(f"Initializing Gemini embedding model ({EMBEDDING_MODEL})...")
+        client = genai.Client(api_key=GEMINI_API_KEY)
+    else:
+        logging.warning("No GEMINI_API_KEY — blocks will be inserted without embeddings")
 
     conn = get_db_connection()
     try:
@@ -171,7 +231,7 @@ def main():
             with conn.cursor() as cursor:
                 data = load_json_data(args.input)
                 story_id = insert_story(cursor, data)
-                insert_chapters(cursor, story_id, data.get("chapters", []), model)
+                insert_chapters(cursor, story_id, data.get("chapters", []), client)
         logging.info("Successfully loaded story into database.")
     finally:
         conn.close()

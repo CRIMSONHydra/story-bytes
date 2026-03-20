@@ -1,5 +1,5 @@
 psycopg2-binary
-sentence-transformers
+google-genai
 python-dotenv
 pgvector
 ebooklib
