@@ -12,7 +12,7 @@ export const handleGetStories = async (_req: Request, res: Response) => {
 };
 
 export const handleGetStory = async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   try {
     const story = await getStoryById(id);
     if (!story) {

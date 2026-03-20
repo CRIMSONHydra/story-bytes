@@ -57,7 +57,7 @@ The vector search query never matches any stored embeddings. Even if it did, com
 
 ---
 
-## Phase 1: Foundation Fixes
+## Phase 1: Foundation Fixes ✅ COMPLETE
 
 > Priority: **CRITICAL** -- nothing else works until this is fixed.
 
@@ -104,7 +104,7 @@ CREATE INDEX idx_knowledge_embeddings_vector
 
 ---
 
-## Phase 2: CBZ/CBR Comic Ingestion
+## Phase 2: CBZ/CBR Comic Ingestion ✅ COMPLETE
 
 > Extend ingestion to support image-based comics alongside EPUB novels.
 
@@ -149,7 +149,7 @@ CREATE INDEX idx_knowledge_embeddings_vector
 
 ---
 
-## Phase 3: Image Intelligence Pipeline
+## Phase 3: Image Intelligence Pipeline ✅ COMPLETE
 
 > Multi-pass image analysis to map images to characters, locations, and scenes.
 
@@ -217,7 +217,7 @@ CREATE INDEX idx_asset_embeddings_vector
 
 ---
 
-## Phase 4: Enhanced RAG and Spoiler-Free Intelligence
+## Phase 4: Enhanced RAG and Spoiler-Free Intelligence ✅ COMPLETE
 
 > Smarter retrieval, summarization, and foreshadowing awareness.
 
@@ -262,7 +262,7 @@ Modify the system prompt in `backend/src/services/rag.ts` to handle foreshadowin
 
 ---
 
-## Phase 5: Frontend and UX
+## Phase 5: Frontend and UX ✅ COMPLETE
 
 > Make the application pleasant for reading and querying.
 
@@ -360,7 +360,7 @@ Phase 1 (Fix embeddings)
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Embedding model | Gemini `text-embedding-004` everywhere | Consistency between ingest and query; higher quality than MiniLM |
+| Embedding model | Gemini `gemini-embedding-001` (768-dim) | Consistency between ingest and query; `text-embedding-004` was retired |
 | Vector store | pgvector in PostgreSQL | Single database, HNSW indexes, sufficient for this scale |
 | Image analysis | Gemini vision (multimodal) | Same API/billing as text; strong visual understanding |
 | Foreshadowing | LLM prompt engineering at query time | Simpler than ingest-time tagging; more flexible |

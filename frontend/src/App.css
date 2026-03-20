@@ -10,6 +10,25 @@ header {
   margin-bottom: 2rem;
 }
 
+.home-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.scene-break {
+  border: none;
+  border-top: 1px solid #555;
+  margin: 2em auto;
+  width: 40%;
+}
+
+.chapter-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 1em 0;
+}
+
 /* Story List Grid */
 .grid {
   display: grid;
@@ -35,13 +54,109 @@ header {
   border-color: #646cff;
 }
 
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.card-header h3 {
+  margin: 0;
+}
+
+.card-footer {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 1em;
+}
+
 .lang-tag {
   display: inline-block;
   background: #444;
   padding: 0.2em 0.6em;
   border-radius: 4px;
   font-size: 0.8em;
+}
+
+.type-tag {
+  display: inline-block;
+  padding: 0.2em 0.6em;
+  border-radius: 4px;
+  font-size: 0.75em;
+  font-weight: 600;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.type-novel { background: #2d5a27; color: #a3e89a; }
+.type-comic { background: #5a3927; color: #e8b89a; }
+.type-manga { background: #27415a; color: #9ac5e8; }
+
+.progress-tag {
+  display: inline-block;
+  background: #646cff33;
+  color: #a5a9ff;
+  padding: 0.2em 0.6em;
+  border-radius: 4px;
+  font-size: 0.8em;
+}
+
+.volume-count {
+  display: inline-block;
+  background: #646cff33;
+  color: #a5a9ff;
+  padding: 0.2em 0.6em;
+  border-radius: 4px;
+  font-size: 0.8em;
+}
+
+.series-card {
+  cursor: default;
+}
+
+.series-header {
+  cursor: pointer;
+}
+
+.volume-list {
   margin-top: 1em;
+  border-top: 1px solid #444;
+  padding-top: 0.8em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+
+.volume-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.5em 0.6em;
+  border-radius: 6px;
+  background: #2a2a2a;
+  text-decoration: none;
+  color: inherit;
+  font-size: 0.9em;
+  transition: background 0.15s;
+}
+
+.volume-item:hover {
+  background: #3a3a3a;
+}
+
+.volume-number {
+  font-weight: 600;
+  color: #a5a9ff;
+  min-width: 3em;
+}
+
+.volume-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Reader Layout */
@@ -83,6 +198,58 @@ header {
   margin-bottom: 1.5em;
 }
 
+/* Comic Viewer */
+.comic-viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.comic-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #444;
+  margin-bottom: 0.5rem;
+}
+
+.comic-toolbar button {
+  padding: 0.4em 0.8em;
+  font-size: 0.85em;
+}
+
+.comic-page-info {
+  font-size: 0.9em;
+  color: #aaa;
+}
+
+.comic-page-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow: auto;
+  cursor: pointer;
+}
+
+.comic-page {
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.comic-fit-width {
+  width: 100%;
+  height: auto;
+}
+
+.comic-fit-height {
+  height: 100%;
+  width: auto;
+}
+
 /* Chat Sidebar */
 .reader-sidebar {
   flex: 1;
@@ -98,6 +265,56 @@ header {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+/* Chat Controls */
+.chat-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 1rem;
+  background: #252525;
+  border-bottom: 1px solid #444;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.chat-mode-selector {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.mode-btn {
+  padding: 0.3em 0.7em;
+  font-size: 0.8em;
+  border-radius: 6px;
+  background: #333;
+  color: #aaa;
+  border: 1px solid #444;
+  cursor: pointer;
+}
+
+.mode-btn.active {
+  background: #646cff;
+  color: white;
+  border-color: #646cff;
+}
+
+.spoiler-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8em;
+  color: #aaa;
+}
+
+.spoiler-selector select {
+  padding: 0.3em 0.5em;
+  border-radius: 6px;
+  background: #333;
+  color: white;
+  border: 1px solid #444;
+  font-size: 0.9em;
 }
 
 .chat-messages {
@@ -122,7 +339,7 @@ header {
 }
 
 .bubble {
-  max-width: 80%;
+  max-width: 85%;
   padding: 0.8rem 1.2rem;
   border-radius: 12px;
   font-size: 0.95rem;
@@ -138,6 +355,85 @@ header {
   background: #333;
   color: #eee;
   border-bottom-left-radius: 2px;
+}
+
+/* Source citations */
+.chat-sources {
+  margin-top: 0.6rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid #555;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.sources-label {
+  font-size: 0.75em;
+  color: #999;
+}
+
+.source-link {
+  background: #444;
+  color: #a5a9ff;
+  border: none;
+  padding: 0.15em 0.5em;
+  border-radius: 4px;
+  font-size: 0.75em;
+  cursor: pointer;
+}
+
+.source-link:hover {
+  background: #555;
+}
+
+/* Chat images */
+.chat-images {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.chat-image-thumb img {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid #555;
+  transition: border-color 0.2s;
+}
+
+.chat-image-thumb img:hover {
+  border-color: #646cff;
+}
+
+.image-expanded {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  cursor: pointer;
+  padding: 2rem;
+}
+
+.image-expanded img {
+  max-width: 90vw;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.image-expanded p {
+  color: #ccc;
+  margin-top: 1rem;
+  text-align: center;
+  max-width: 600px;
 }
 
 .chat-input {
@@ -165,4 +461,46 @@ header {
 .chat-input button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .app-container {
+    padding: 1rem;
+  }
+
+  .reader-container {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .reader-content {
+    min-height: 50vh;
+  }
+
+  .reader-sidebar {
+    height: 50vh;
+  }
+
+  .chapter-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .chapter-header h2 {
+    font-size: 1.1em;
+    order: -1;
+    width: 100%;
+    text-align: center;
+  }
+
+  .chat-controls {
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
 }

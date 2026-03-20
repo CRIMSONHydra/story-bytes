@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { getChaptersByStoryId, getChapterById } from '../services/db';
 
 export const handleGetChapters = async (req: Request, res: Response) => {
-  const { storyId } = req.params;
+  const storyId = req.params.storyId as string;
   try {
     const chapters = await getChaptersByStoryId(storyId);
     res.json(chapters);
@@ -13,7 +13,7 @@ export const handleGetChapters = async (req: Request, res: Response) => {
 };
 
 export const handleGetChapter = async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   try {
     const chapter = await getChapterById(id);
     if (!chapter) {

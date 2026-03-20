@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import './App.css';
 import StoryList from './pages/StoryList';
 import Reader from './pages/Reader';
@@ -8,7 +8,7 @@ function App() {
     <Router>
       <div className="app-container">
         <header>
-          <h1>Story Bytes</h1>
+          <Link to="/" className="home-link"><h1>Story Bytes</h1></Link>
         </header>
         <main>
           <Routes>

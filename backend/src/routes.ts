@@ -7,6 +7,9 @@ import { Router } from 'express';
 import { handleChat } from './controllers/chat';
 import { handleGetStories, handleGetStory } from './controllers/stories';
 import { handleGetChapters, handleGetChapter } from './controllers/chapters';
+import { handleSummarize } from './controllers/summary';
+import { handleGetAssetImage, handleGetStoryImage } from './controllers/assets';
+import { handleGetProgress, handleUpdateProgress } from './controllers/progress';
 
 const router = Router();
 
@@ -18,7 +21,18 @@ router.get('/stories/:storyId/chapters', handleGetChapters);
 // Chapters
 router.get('/chapters/:id', handleGetChapter);
 
-// Chat
+// Chat (RAG)
 router.post('/chat', handleChat);
+
+// Summarization (Phase 4)
+router.post('/stories/:storyId/summarize', handleSummarize);
+
+// Assets (Phase 5)
+router.get('/assets/:assetId/image', handleGetAssetImage);
+router.get('/stories/:storyId/image', handleGetStoryImage);
+
+// Reading Progress (Phase 5)
+router.get('/stories/:storyId/progress', handleGetProgress);
+router.put('/stories/:storyId/progress', handleUpdateProgress);
 
 export default router;

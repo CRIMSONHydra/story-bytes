@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS stories (
     title           TEXT NOT NULL,
     authors         TEXT[] DEFAULT '{}',
     language        TEXT,
+    content_type    TEXT NOT NULL DEFAULT 'novel'
+                    CHECK (content_type IN ('novel', 'comic', 'manga')),
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -69,19 +71,22 @@ CREATE INDEX IF NOT EXISTS idx_sources_chapter_position
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS assets (
-    asset_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    story_id        UUID REFERENCES stories(story_id) ON DELETE CASCADE,
-    href            TEXT UNIQUE,
-    media_type      TEXT,
-    sha256          BYTEA,
-    binary_data     BYTEA,                     -- optional if using direct DB storage
-    storage_url     TEXT,                      -- set when binary stored externally
-    width           INT,
-    height          INT,
-    ocr_text        TEXT,
-    metadata        JSONB DEFAULT '{}',
-    created_at      TIMESTAMPTZ DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ DEFAULT NOW()
+    asset_id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    story_id            UUID REFERENCES stories(story_id) ON DELETE CASCADE,
+    href                TEXT UNIQUE,
+    media_type          TEXT,
+    sha256              BYTEA,
+    binary_data         BYTEA,                     -- optional if using direct DB storage
+    storage_url         TEXT,                      -- set when binary stored externally
+    width               INT,
+    height              INT,
+    ocr_text            TEXT,
+    visual_description  TEXT,                      -- Phase 3: Gemini vision description
+    visual_tags         JSONB DEFAULT '{}',        -- Phase 3: {"characters_visual": [], "setting": "", ...}
+    enriched_metadata   JSONB DEFAULT '{}',        -- Phase 3: post-ingestion enrichment with full story context
+    metadata            JSONB DEFAULT '{}',
+    created_at          TIMESTAMPTZ DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_assets_story
@@ -174,5 +179,53 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_story
 CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_vector
     ON knowledge_embeddings USING hnsw (vector vector_cosine_ops);
 
+-- ---------------------------------------------------------------------------
+-- Asset Embeddings (Phase 3: Image Intelligence)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS asset_embeddings (
+    asset_id        UUID REFERENCES assets(asset_id) ON DELETE CASCADE,
+    model           TEXT NOT NULL,
+    dimensions      INT NOT NULL,
+    vector          vector(768),
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (asset_id, model)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asset_embeddings_vector
+    ON asset_embeddings USING hnsw (vector vector_cosine_ops);
+
+-- ---------------------------------------------------------------------------
+-- Chapter Summaries (Phase 4: Cached summarization)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS chapter_summaries (
+    summary_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    story_id        UUID NOT NULL REFERENCES stories(story_id) ON DELETE CASCADE,
+    up_to_chapter   INT NOT NULL,
+    summary_text    TEXT NOT NULL,
+    model           TEXT NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (story_id, up_to_chapter, model)
+);
+
+-- ---------------------------------------------------------------------------
+-- Full-text search support (Phase 4: Hybrid search)
+-- ---------------------------------------------------------------------------
+
+CREATE INDEX IF NOT EXISTS idx_blocks_text_fts
+    ON chapter_blocks USING gin (to_tsvector('english', COALESCE(text_content, '')));
+
+-- ---------------------------------------------------------------------------
+-- Reading Progress (Phase 5)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS reading_progress (
+    user_id             UUID NOT NULL,
+    story_id            UUID NOT NULL REFERENCES stories(story_id) ON DELETE CASCADE,
+    last_chapter_order  INT NOT NULL DEFAULT 0,
+    updated_at          TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, story_id)
+);
 
 

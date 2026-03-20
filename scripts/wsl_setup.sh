@@ -49,7 +49,7 @@ echo "── Step 1: Install pgvector ──"
 
 # Check if pgvector is already available
 PG_AVAILABLE=$( PGPASSWORD="${DB_PASSWORD:-1234321}" psql \
-  -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" \
+  -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5433}" \
   -U "${DB_USER:-postgres}" -d "${DB_NAME:-postgres}" \
   -tAc "SELECT count(*) FROM pg_available_extensions WHERE name='vector'" 2>/dev/null || echo "0" )
 
@@ -94,7 +94,7 @@ if [ -f "$PROJECT_DIR/.env" ]; then
 fi
 
 PGPASSWORD="${DB_PASSWORD:-1234321}" psql \
-  -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" \
+  -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5433}" \
   -U "${DB_USER:-postgres}" -d "${DB_NAME:-postgres}" \
   -f db/migrations/001_enable_pgvector.sql
 
@@ -102,7 +102,7 @@ echo "Migration applied!"
 
 # Verify
 PGPASSWORD="${DB_PASSWORD:-1234321}" psql \
-  -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" \
+  -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5433}" \
   -U "${DB_USER:-postgres}" -d "${DB_NAME:-postgres}" \
   -c "SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';"
 
@@ -121,7 +121,7 @@ uv pip install -r ingestion/requirements.txt
 
 # ── 4. Re-ingest all processed volumes ────────────────────────────────
 echo ""
-echo "── Step 4: Re-ingest volumes with Gemini text-embedding-004 ──"
+echo "── Step 4: Re-ingest volumes with Gemini gemini-embedding-001 ──"
 
 if [ -z "${GEMINI_API_KEY:-}" ]; then
   echo "ERROR: GEMINI_API_KEY not set in .env — cannot generate embeddings."
@@ -151,11 +151,11 @@ fi
 echo ""
 echo "── Verification ──"
 PGPASSWORD="${DB_PASSWORD:-1234321}" psql \
-  -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" \
+  -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5433}" \
   -U "${DB_USER:-postgres}" -d "${DB_NAME:-postgres}" \
   -c "SELECT
         (SELECT count(*) FROM stories) as stories,
         (SELECT count(*) FROM chapters) as chapters,
         (SELECT count(*) FROM chapter_blocks) as blocks,
         (SELECT count(*) FROM block_embeddings) as embeddings,
-        (SELECT count(*) FROM block_embeddings WHERE model = 'text-embedding-004') as correct_model;"
+        (SELECT count(*) FROM block_embeddings WHERE model = 'gemini-embedding-001') as correct_model;"

@@ -5,3 +5,7 @@ pgvector
 ebooklib
 beautifulsoup4
 lxml
+# Comic ingestion (Phase 2)
+rarfile
+pytesseract
+Pillow

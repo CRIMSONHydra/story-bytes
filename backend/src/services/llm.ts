@@ -40,16 +40,19 @@ export const getModel = () => {
 };
 
 /**
- * Generates an embedding vector for the given text using Google's text-embedding-004 model.
+ * Generates an embedding vector for the given text using Google's gemini-embedding-001 model.
  * 
  * @param text - The text to generate an embedding for
  * @returns Promise resolving to an array of numbers representing the embedding vector
  * @throws Error if embedding generation fails or response is invalid
  */
+export const EMBEDDING_MODEL = 'gemini-embedding-001';
+
 export const generateEmbedding = async (text: string): Promise<number[]> => {
   const response = await genAI.models.embedContent({
-    model: 'text-embedding-004',
-    contents: text
+    model: EMBEDDING_MODEL,
+    contents: text,
+    config: { outputDimensionality: 768 },
   });
   
   // Validate response structure

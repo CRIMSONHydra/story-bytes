@@ -6,8 +6,10 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
 
-// Load environment variables from .env file
-dotenv.config();
+// Load environment variables from .env file (check both CWD and parent for monorepo)
+import { resolve } from 'path';
+dotenv.config({ path: resolve(process.cwd(), '.env') });
+dotenv.config({ path: resolve(process.cwd(), '..', '.env') });
 
 /**
  * Environment variable schema definition.
@@ -42,7 +44,7 @@ const { data } = parsed;
  */
 const databaseUrl = data.DATABASE_URL ||
   (data.DB_USER && data.DB_HOST && data.DB_NAME
-    ? `postgresql://${data.DB_USER}:${data.DB_PASSWORD || ''}@${data.DB_HOST}:${data.DB_PORT || 5432}/${data.DB_NAME}`
+    ? `postgresql://${data.DB_USER}:${data.DB_PASSWORD || ''}@${data.DB_HOST}:${data.DB_PORT || 5433}/${data.DB_NAME}`
     : undefined);
 
 /**
