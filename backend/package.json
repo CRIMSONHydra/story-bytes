@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "1.0.0",
+  "version": "0.7.0",
   "description": "Story Bytes API server.",
   "main": "src/server.ts",
   "scripts": {
@@ -23,12 +23,16 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "glob": "^13.0.6",
+    "jszip": "^3.10.1",
     "pg": "^8.16.3",
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.5",
+    "@types/glob": "^9.0.0",
     "@types/node": "^24.10.1",
     "@types/pg": "^8.15.6",
     "@types/supertest": "^6.0.3",
