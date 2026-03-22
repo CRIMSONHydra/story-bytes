@@ -38,22 +38,41 @@ React 19 SPA (Vite)
 | Web search | Working | Google Custom Search for external knowledge (theories, wiki) |
 | Spoiler filtering | Designed | `findSimilarBlocks` filters by `chapter_order <= currentChapter` |
 
-### Known Bugs
+### All Known Bugs Fixed (v1.0)
 
-**CRITICAL -- Embedding Model Mismatch (RAG is non-functional):**
+- Embedding model mismatch resolved (migrated to `gemini-embedding-001` everywhere)
+- pgvector enabled with HNSW indexes
+- 14 backend tests passing
+- Cross-volume spoiler support
+- Scene breaks render correctly
+- Chapter mismatch fixed
 
-| Layer | Model | Dimensions | Stored as |
-|---|---|---|---|
-| Ingestion (`load_to_db.py`) | `all-MiniLM-L6-v2` | 384 | `model='all-MiniLM-L6-v2'` |
-| Backend (`llm.ts` + `db.ts`) | `text-embedding-004` | 768 | Filters `WHERE model='text-embedding-004'` |
+---
 
-The vector search query never matches any stored embeddings. Even if it did, comparing 384-dim and 768-dim vectors would produce garbage results. **RAG returns empty context on every query.**
+## v1.0 Release Features
 
-**Other issues:**
+### Standalone Chat Page ✅ COMPLETE
+- `/chat` route — full-page chat interface independent of reader
+- Story and chapter selectors at top
+- Works without selecting a story (general chat mode)
+- Reuses ChatInterface component with optional props
 
-- pgvector extension commented out in `schema.sql` -- using `FLOAT8[]` arrays without HNSW indexes
-- The `<=>` cosine distance operator in `db.ts` requires pgvector to be enabled
-- No integration tests for the RAG pipeline
+### Admin/Ingestion Page ✅ COMPLETE
+- `/admin` route — manage stories and trigger ingestion
+- Stories table with chapter/block/embedding/asset counts
+- Delete story with cascade cleanup
+- Upload EPUB/CBZ/CBR with full 3-step pipeline:
+  1. Extract (epub/comic parser)
+  2. Load + Pass 1 image tagging
+  3. Pass 2 enrichment with full story context
+- Re-enriches entire series when adding a new volume
+
+### S3 Storage Abstraction ✅ COMPLETE
+- `@aws-sdk/client-s3` integrated
+- `backend/src/services/storage.ts` — abstraction layer
+- Optional S3 env vars (`AWS_BUCKET`, `AWS_REGION`)
+- Local filesystem remains default; S3 is opt-in
+- `--upload-s3` flag ready for ingestion pipeline
 
 ---
 
