@@ -229,7 +229,7 @@ export const answerQuery = async (
     const imageContext = relevantImages.length > 0
       ? '\n\nRELEVANT IMAGES:\n' + relevantImages.map(img => {
         const meta = img.enriched_metadata as Record<string, unknown> | null;
-        const chars = meta?.characters ? ` (Characters: ${(meta.characters as string[]).join(', ')})` : '';
+        const chars = Array.isArray(meta?.characters) ? ` (Characters: ${(meta.characters as string[]).join(', ')})` : '';
         return `- ${img.visual_description || img.href}${chars}`;
       }).join('\n')
       : '';

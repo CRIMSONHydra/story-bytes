@@ -16,9 +16,13 @@ CREATE TABLE IF NOT EXISTS stories (
     language        TEXT,
     content_type    TEXT NOT NULL DEFAULT 'novel'
                     CHECK (content_type IN ('novel', 'comic', 'manga')),
+    series_title    TEXT,
+    epub_path       TEXT,
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_stories_series_title ON stories(series_title);
 
 CREATE TABLE IF NOT EXISTS chapters (
     chapter_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -72,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_sources_chapter_position
 
 CREATE TABLE IF NOT EXISTS assets (
     asset_id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    story_id            UUID REFERENCES stories(story_id) ON DELETE CASCADE,
+    story_id            UUID NOT NULL REFERENCES stories(story_id) ON DELETE CASCADE,
     href                TEXT UNIQUE,
     media_type          TEXT,
     sha256              BYTEA,
@@ -156,7 +160,7 @@ CREATE INDEX IF NOT EXISTS idx_annotations_story
 
 CREATE TABLE IF NOT EXISTS external_knowledge (
     knowledge_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    story_id        UUID REFERENCES stories(story_id) ON DELETE CASCADE,
+    story_id        UUID NOT NULL REFERENCES stories(story_id) ON DELETE CASCADE,
     content         TEXT NOT NULL,
     source_url      TEXT,
     knowledge_type  TEXT CHECK (knowledge_type IN ('fact', 'theory', 'speculation')),

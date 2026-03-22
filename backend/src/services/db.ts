@@ -184,6 +184,9 @@ export const insertExternalKnowledge = async (
       RETURNING knowledge_id;
     `;
     const knowledgeRes = await client.query(insertKnowledgeQuery, [storyId, content, sourceUrl, type]);
+    if (!knowledgeRes.rows[0]) {
+      throw new Error('Failed to insert external knowledge: no row returned');
+    }
     const knowledgeId = knowledgeRes.rows[0].knowledge_id;
 
     const embeddingString = `[${embedding.join(',')}]`;

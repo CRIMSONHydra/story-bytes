@@ -92,6 +92,7 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
         })
       });
 
+      if (!res.ok) throw new Error(`Chat request failed: ${res.status}`);
       const data = await res.json();
 
       setMessages(prev => [...prev, {

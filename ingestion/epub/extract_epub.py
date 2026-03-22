@@ -44,18 +44,34 @@ def flatten_toc(toc: Sequence) -> List[epub.Link]:
     return items
 
 
+BLOCK_TAGS = frozenset({"p", "div", "section", "article", "blockquote", "li", "h1", "h2", "h3", "h4", "h5", "h6", "tr"})
+SCENE_BREAK_RE = re.compile(r"^\s*(\*{3,}|[—–-]{3,}|#\s*#\s*#)\s*$")
+
+
 def extract_blocks_from_html(item: epub.EpubHtml) -> List[dict]:
     soup = BeautifulSoup(item.get_content(), "lxml-xml")
     body = soup.body or soup
     blocks: List[dict] = []
-    buffer: List[str] = []
+    paragraphs: List[str] = []  # accumulates paragraphs within a text block
+    buffer: List[str] = []  # accumulates words within a paragraph
 
-    def flush_text() -> None:
+    def flush_paragraph() -> None:
         if buffer:
             text = normalise_whitespace(" ".join(buffer))
             if text:
-                blocks.append({"type": "text", "text": text})
+                # Detect scene breaks like *** or ---
+                if SCENE_BREAK_RE.match(text):
+                    flush_text()
+                    blocks.append({"type": "text", "text": "***"})
+                else:
+                    paragraphs.append(text)
             buffer.clear()
+
+    def flush_text() -> None:
+        flush_paragraph()
+        if paragraphs:
+            blocks.append({"type": "text", "text": "\n\n".join(paragraphs)})
+            paragraphs.clear()
 
     for node in body.descendants:
         if isinstance(node, NavigableString):
@@ -64,16 +80,25 @@ def extract_blocks_from_html(item: epub.EpubHtml) -> List[dict]:
             text = normalise_whitespace(str(node))
             if text:
                 buffer.append(text)
-        elif isinstance(node, Tag) and node.name and node.name.lower() == "img":
-            flush_text()
-            src = resolve_href(item.get_name(), node.get("src"))
-            blocks.append(
-                {
-                    "type": "image",
-                    "src": src,
-                    "alt": normalise_whitespace(node.get("alt", "")) or None,
-                }
-            )
+        elif isinstance(node, Tag) and node.name:
+            tag = node.name.lower()
+            if tag == "img":
+                flush_text()
+                src = resolve_href(item.get_name(), node.get("src"))
+                blocks.append(
+                    {
+                        "type": "image",
+                        "src": src,
+                        "alt": normalise_whitespace(node.get("alt", "")) or None,
+                    }
+                )
+            elif tag == "hr":
+                flush_text()
+                blocks.append({"type": "text", "text": "***"})
+            elif tag == "br":
+                flush_paragraph()
+            elif tag in BLOCK_TAGS:
+                flush_paragraph()
     flush_text()
     return blocks
 

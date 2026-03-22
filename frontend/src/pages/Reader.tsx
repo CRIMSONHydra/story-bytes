@@ -37,7 +37,7 @@ export default function Reader() {
   useEffect(() => {
     if (!storyId) return;
     fetch(`${API_BASE}/api/stories/${storyId}`)
-      .then(res => res.json())
+      .then(res => { if (!res.ok) throw new Error(`Story fetch failed: ${res.status}`); return res.json(); })
       .then(setStory)
       .catch(err => console.error('Failed to load story:', err));
   }, [storyId]);
@@ -47,7 +47,7 @@ export default function Reader() {
     if (!storyId || !chapterId) return;
 
     fetch(`${API_BASE}/api/stories/${storyId}/chapters`)
-      .then(res => res.json())
+      .then(res => { if (!res.ok) throw new Error(`Chapters fetch failed: ${res.status}`); return res.json(); })
       .then((chapters: { chapter_id: string; chapter_order: number; title: string }[]) => {
         setChapterList(chapters);
         const targetOrder = parseInt(chapterId, 10);
@@ -61,7 +61,7 @@ export default function Reader() {
         }
         throw new Error('Chapter not found');
       })
-      .then(res => res.json())
+      .then(res => { if (!res.ok) throw new Error(`Chapter fetch failed: ${res.status}`); return res.json(); })
       .then(data => {
         setChapter(data);
         setLoading(false);

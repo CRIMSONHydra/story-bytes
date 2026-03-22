@@ -244,6 +244,10 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
     ingest_start = time.time()
 
     # Clear existing chapters for this story to avoid duplicates/conflicts on re-run
+    cursor.execute("SELECT count(*) FROM chapters WHERE story_id = %s", (story_id,))
+    existing_count = cursor.fetchone()[0]
+    if existing_count > 0:
+        logging.warning(f"Deleting {existing_count} existing chapters (and their embeddings/progress) for re-ingestion")
     cursor.execute("DELETE FROM chapters WHERE story_id = %s", (story_id,))
 
     # Collect all text blocks first, insert chapters/blocks, then batch-embed
