@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "0.7.0",
+  "version": "0.9.0",
   "description": "Story Bytes API server.",
   "main": "src/server.ts",
   "scripts": {
