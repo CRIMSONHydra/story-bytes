@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 
 interface ChatInterfaceProps {
   storyId: string;
@@ -16,6 +17,7 @@ interface ChatImage {
   assetId: string;
   href: string;
   description: string;
+  storyId?: string;
 }
 
 interface Message {
@@ -27,6 +29,12 @@ interface Message {
 
 type ChatMode = 'recall' | 'foreshadowing' | 'theory';
 
+interface SeriesVolume {
+  story_id: string;
+  story_title: string;
+  chapters: { chapter_order: number; title: string }[];
+}
+
 const API_BASE = 'http://localhost:5001';
 
 export default function ChatInterface({ storyId, currentChapter, totalChapters }: ChatInterfaceProps) {
@@ -36,13 +44,26 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<ChatMode>('recall');
-  const [spoilerLimit, setSpoilerLimit] = useState(currentChapter);
+  const [spoilerStoryId, setSpoilerStoryId] = useState(storyId);
+  const [spoilerChapter, setSpoilerChapter] = useState(currentChapter);
+  const [seriesVolumes, setSeriesVolumes] = useState<SeriesVolume[]>([]);
   const [expandedImages, setExpandedImages] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Fetch series chapters for cross-volume spoiler selector
   useEffect(() => {
-    setSpoilerLimit(currentChapter);
-  }, [currentChapter]);
+    fetch(`${API_BASE}/api/stories/${storyId}/series-chapters`)
+      .then(res => res.json())
+      .then((data: SeriesVolume[]) => {
+        if (Array.isArray(data)) setSeriesVolumes(data);
+      })
+      .catch(() => { /* ignore */ });
+  }, [storyId]);
+
+  useEffect(() => {
+    setSpoilerStoryId(storyId);
+    setSpoilerChapter(currentChapter);
+  }, [storyId, currentChapter]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -65,8 +86,8 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: userMsg,
-          storyId,
-          currentChapter: spoilerLimit,
+          storyId: spoilerStoryId,
+          currentChapter: spoilerChapter,
           mode,
         })
       });
@@ -111,14 +132,33 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
         <div className="spoiler-selector">
           <label>Spoiler limit:</label>
           <select
-            value={spoilerLimit}
-            onChange={e => setSpoilerLimit(Number(e.target.value))}
+            value={`${spoilerStoryId}:${spoilerChapter}`}
+            onChange={e => {
+              const [sid, ch] = e.target.value.split(':');
+              setSpoilerStoryId(sid);
+              setSpoilerChapter(Number(ch));
+            }}
           >
-            {Array.from({ length: totalChapters || Math.max(currentChapter + 5, 20) }, (_, i) => i + 1).map(ch => (
-              <option key={ch} value={ch}>
-                Ch. {ch}{ch === currentChapter ? ' (current)' : ''}
-              </option>
-            ))}
+            {seriesVolumes.length > 1 ? (
+              seriesVolumes.map((vol, vi) => (
+                <optgroup key={vol.story_id} label={`Vol. ${vi + 1}`}>
+                  {vol.chapters.map(ch => (
+                    <option
+                      key={`${vol.story_id}:${ch.chapter_order}`}
+                      value={`${vol.story_id}:${ch.chapter_order}`}
+                    >
+                      {ch.title}{vol.story_id === storyId && ch.chapter_order === currentChapter ? ' (current)' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              ))
+            ) : (
+              Array.from({ length: totalChapters || Math.max(currentChapter + 5, 20) }, (_, i) => i + 1).map(ch => (
+                <option key={ch} value={`${storyId}:${ch}`}>
+                  Ch. {ch}{ch === currentChapter ? ' (current)' : ''}
+                </option>
+              ))
+            )}
           </select>
         </div>
       </div>
@@ -128,7 +168,7 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
         {messages.map((msg, idx) => (
           <div key={idx} className={`message ${msg.role}`}>
             <div className="bubble">
-              {msg.content}
+              <ReactMarkdown>{msg.content}</ReactMarkdown>
 
               {/* Source citations */}
               {msg.sources && msg.sources.length > 0 && (
@@ -150,21 +190,28 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
               {/* Image gallery */}
               {msg.images && msg.images.length > 0 && (
                 <div className="chat-images">
-                  {msg.images.map(img => (
-                    <div key={img.assetId} className="chat-image-thumb">
-                      <img
-                        src={`${API_BASE}/api/assets/${img.assetId}/image`}
-                        alt={img.description}
-                        onClick={() => setExpandedImages(expandedImages === img.assetId ? null : img.assetId)}
-                      />
-                      {expandedImages === img.assetId && (
-                        <div className="image-expanded" onClick={() => setExpandedImages(null)}>
-                          <img src={`${API_BASE}/api/assets/${img.assetId}/image`} alt={img.description} />
-                          <p>{img.description}</p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  {msg.images.map((img, imgIdx) => {
+                    const imgKey = img.assetId || `ch-img-${imgIdx}`;
+                    const imgStoryId = img.storyId || storyId;
+                    const imgSrc = img.assetId
+                      ? `${API_BASE}/api/assets/${img.assetId}/image`
+                      : `${API_BASE}/api/stories/${imgStoryId}/image?path=${encodeURIComponent(img.href)}`;
+                    return (
+                      <div key={imgKey} className="chat-image-thumb">
+                        <img
+                          src={imgSrc}
+                          alt={img.description}
+                          onClick={() => setExpandedImages(expandedImages === imgKey ? null : imgKey)}
+                        />
+                        {expandedImages === imgKey && (
+                          <div className="image-expanded" onClick={() => setExpandedImages(null)}>
+                            <img src={imgSrc} alt={img.description} />
+                            <p>{img.description}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

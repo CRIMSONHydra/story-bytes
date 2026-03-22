@@ -30,7 +30,7 @@ export default function Reader() {
   const navigate = useNavigate();
   const [story, setStory] = useState<Story | null>(null);
   const [chapter, setChapter] = useState<Chapter | null>(null);
-  const [chapterList, setChapterList] = useState<{ chapter_id: string; chapter_order: number }[]>([]);
+  const [chapterList, setChapterList] = useState<{ chapter_id: string; chapter_order: number; title: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch story metadata
@@ -48,10 +48,13 @@ export default function Reader() {
 
     fetch(`${API_BASE}/api/stories/${storyId}/chapters`)
       .then(res => res.json())
-      .then((chapters: { chapter_id: string; chapter_order: number }[]) => {
+      .then((chapters: { chapter_id: string; chapter_order: number; title: string }[]) => {
         setChapterList(chapters);
         const targetOrder = parseInt(chapterId, 10);
-        const targetChapter = chapters.find(c => c.chapter_order === targetOrder);
+        // Find exact match, or nearest chapter >= target, or fall back to first
+        const targetChapter = chapters.find(c => c.chapter_order === targetOrder)
+          || chapters.find(c => c.chapter_order >= targetOrder)
+          || chapters[0];
 
         if (targetChapter) {
           return fetch(`${API_BASE}/api/chapters/${targetChapter.chapter_id}`);
@@ -113,7 +116,20 @@ export default function Reader() {
       <div className="reader-content">
         <header className="chapter-header">
           <button onClick={handlePrevChapter} disabled={!prevChapter}>&larr; Prev</button>
-          <h2>{chapter.title}</h2>
+          <div className="chapter-title-nav">
+            <h2>{chapter.title}</h2>
+            <select
+              className="chapter-selector"
+              value={chapter.chapter_order}
+              onChange={e => navigate(`/story/${storyId}/chapter/${e.target.value}`)}
+            >
+              {chapterList.map(ch => (
+                <option key={ch.chapter_id} value={ch.chapter_order}>
+                  {ch.title}
+                </option>
+              ))}
+            </select>
+          </div>
           <button onClick={handleNextChapter} disabled={!nextChapter}>Next &rarr;</button>
         </header>
 
@@ -124,11 +140,18 @@ export default function Reader() {
             {chapter.blocks.map(block => (
               <div key={block.block_id} id={`block-${block.block_id}`} className={`block ${block.block_type}`}>
                 {block.block_type === 'text' ? (
-                  block.text_content?.split(/\n\n+/).map((para, i) =>
-                    /^\s*\*{3,}\s*$/.test(para)
-                      ? <hr key={i} className="scene-break" />
-                      : <p key={i}>{para}</p>
-                  )
+                  block.text_content?.split(/\n\n+/).flatMap((para, i) => {
+                    const parts = para.split(/\s*\*{3,}\s*/);
+                    if (parts.length > 1) {
+                      return parts.flatMap((part, j) => {
+                        const els: React.ReactElement[] = [];
+                        if (j > 0) els.push(<hr key={`${i}-br-${j}`} className="scene-break" />);
+                        if (part.trim()) els.push(<p key={`${i}-${j}`}>{part.trim()}</p>);
+                        return els;
+                      });
+                    }
+                    return [<p key={i}>{para}</p>];
+                  })
                 ) : block.image_src ? (
                   <img
                     src={`${API_BASE}/api/stories/${storyId}/image?path=${encodeURIComponent(block.image_src)}`}

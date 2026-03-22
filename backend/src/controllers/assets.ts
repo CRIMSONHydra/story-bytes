@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { getAssetById, getStoryById } from '../services/db';
-import { readFile } from 'fs/promises';
-import { join, extname } from 'path';
+import { readFile, access } from 'fs/promises';
+import { join, extname, resolve } from 'path';
 
 const MIME_MAP: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -84,28 +84,37 @@ export const handleGetStoryImage = async (req: Request, res: Response) => {
       return;
     }
 
-    // Find the EPUB file — search common locations
-    const { globSync } = await import('glob');
-    const patterns = [
-      'dataset/**/*.epub',
-    ];
-
+    // Find the EPUB file — use stored epub_path or fall back to glob search
+    const projectRoot = resolve(process.cwd(), '..');
     let epubPath: string | null = null;
-    for (const pattern of patterns) {
-      const matches = globSync(pattern);
-      // Match by story title similarity
+
+    // Prefer stored epub_path from database
+    if (story.epub_path) {
+      const candidate = resolve(projectRoot, story.epub_path);
+      try {
+        await access(candidate);
+        epubPath = candidate;
+      } catch { /* file not found, fall through to glob */ }
+    }
+
+    // Fallback: glob search with best-match scoring
+    if (!epubPath) {
+      const { globSync } = await import('glob');
+      const matches = globSync(join(projectRoot, 'dataset', '**', '*.epub'));
       const titleLower = story.title.toLowerCase();
+      const titleWords = titleLower.split(/\s+/).filter((w: string) => w.length > 3);
+      let bestScore = 0;
+
       for (const match of matches) {
         const fileName = match.toLowerCase();
-        // Check if the EPUB filename contains key words from the story title
-        const titleWords = titleLower.split(/\s+/).filter((w: string) => w.length > 3);
         const matchCount = titleWords.filter((w: string) => fileName.includes(w)).length;
-        if (matchCount >= 2) {
+        if (matchCount > bestScore) {
+          bestScore = matchCount;
           epubPath = match;
-          break;
         }
       }
-      if (epubPath) break;
+
+      if (bestScore < 2) epubPath = null;
     }
 
     if (!epubPath) {

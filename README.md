@@ -134,6 +134,7 @@ pnpm dev:frontend    # http://localhost:5173
 | GET | `/api/stories/:storyId/image?path=...` | Serve image from EPUB |
 | GET | `/api/stories/:storyId/progress` | Get reading progress |
 | PUT | `/api/stories/:storyId/progress` | Update reading progress |
+| GET | `/api/stories/:storyId/series-chapters` | Cross-volume chapter list |
 
 ### POST /api/chat
 
@@ -186,7 +187,7 @@ uv pip install -r ingestion/requirements.txt
 ### Running Tests
 
 ```bash
-pnpm test    # 8 backend tests (health, RAG, images, foreshadowing)
+pnpm test    # 9 backend tests (health, RAG, images, foreshadowing)
 pnpm lint    # lint both backend and frontend
 pnpm build   # type-check + build both
 ```

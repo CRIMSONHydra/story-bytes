@@ -14,7 +14,7 @@ story-bytes/
 │   │   ├── services/      # Business logic (rag, llm, db, search)
 │   │   ├── db/            # PostgreSQL connection pool
 │   │   ├── config/        # Environment validation (Zod) — loads .env from project root
-│   │   ├── __tests__/     # Vitest test suites (8 tests)
+│   │   ├── __tests__/     # Vitest test suites (9 tests)
 │   │   ├── app.ts         # Express app factory
 │   │   ├── routes.ts      # API route definitions
 │   │   └── server.ts      # Entry point with graceful shutdown
@@ -52,7 +52,7 @@ story-bytes/
 - **Database:** PostgreSQL 18+ on port 5433, with pgvector 0.8+ (HNSW cosine similarity)
 - **LLM:** Google Gemini 2.5 Flash via @google/genai SDK
 - **Embeddings:** Gemini `gemini-embedding-001` (768-dim vectors via `output_dimensionality`)
-- **Testing:** Vitest 4 + Supertest (backend, 8 tests)
+- **Testing:** Vitest 4 + Supertest (backend, 9 tests)
 - **Linting:** ESLint 9 flat config + typescript-eslint + eslint-config-prettier (backend), react-hooks + react-refresh plugins (frontend)
 - **Styling:** Vanilla CSS only — **NO Tailwind CSS**
 - **Ingestion:** Python 3.12+ (psycopg2, google-genai, ebooklib, BeautifulSoup4, rarfile, pytesseract, Pillow)
@@ -116,6 +116,7 @@ uv run python ingestion/enrich_images.py --all
 | GET | `/api/stories/:storyId/image?path=...` | Serve image from EPUB archive |
 | GET | `/api/stories/:storyId/progress` | Get reading progress |
 | PUT | `/api/stories/:storyId/progress` | Update reading progress |
+| GET | `/api/stories/:storyId/series-chapters` | Cross-volume chapter list for spoiler selector |
 
 ## Environment Variables
 

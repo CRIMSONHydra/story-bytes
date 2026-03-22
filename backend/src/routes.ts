@@ -10,6 +10,7 @@ import { handleGetChapters, handleGetChapter } from './controllers/chapters';
 import { handleSummarize } from './controllers/summary';
 import { handleGetAssetImage, handleGetStoryImage } from './controllers/assets';
 import { handleGetProgress, handleUpdateProgress } from './controllers/progress';
+import { getSeriesChapters } from './services/db';
 
 const router = Router();
 
@@ -30,6 +31,17 @@ router.post('/stories/:storyId/summarize', handleSummarize);
 // Assets (Phase 5)
 router.get('/assets/:assetId/image', handleGetAssetImage);
 router.get('/stories/:storyId/image', handleGetStoryImage);
+
+// Series chapters (cross-volume spoiler selector)
+router.get('/stories/:storyId/series-chapters', async (req, res) => {
+  try {
+    const data = await getSeriesChapters(req.params.storyId as string);
+    res.json(data);
+  } catch (error) {
+    console.error('Series chapters error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Reading Progress (Phase 5)
 router.get('/stories/:storyId/progress', handleGetProgress);

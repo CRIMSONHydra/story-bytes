@@ -14,8 +14,12 @@ export const handleGetProgress = async (req: Request, res: Response) => {
   const userId = (req.headers['x-user-id'] as string) || DEFAULT_USER_ID;
 
   try {
-    const lastChapter = await getReadingProgress(userId, storyId);
-    res.json({ storyId, lastChapterOrder: lastChapter ?? 0 });
+    const progress = await getReadingProgress(userId, storyId);
+    res.json({
+      storyId,
+      lastChapterOrder: progress?.lastChapterOrder ?? 0,
+      lastChapterTitle: progress?.lastChapterTitle ?? '',
+    });
   } catch (error) {
     console.error('Progress controller error:', error);
     res.status(500).json({ error: 'Internal server error' });

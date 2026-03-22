@@ -25,10 +25,11 @@ export const getModel = () => {
      * @param prompt - The text prompt to send to the model
      * @returns Promise resolving to response object with text() method
      */
-    generateContent: async (prompt: string) => {
+    generateContent: async (prompt: string, options?: { temperature?: number }) => {
       const response = await genAI.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: prompt
+        contents: prompt,
+        config: options?.temperature !== undefined ? { temperature: options.temperature } : undefined,
       });
       return {
         response: {

@@ -26,7 +26,7 @@ interface SearchResult {
  * - Returns empty array on error to prevent breaking calling code
  * - Requires GOOGLE_SEARCH_API_KEY and GOOGLE_CX environment variables
  */
-export const searchWeb = async (query: string): Promise<SearchResult[]> => {
+export const searchWeb = async (query: string, numResults = 5): Promise<SearchResult[]> => {
   // Check if required API credentials are configured
   if (!env.googleSearchApiKey || !env.googleCx) {
     console.warn('Google Search API key or CX not configured.');
@@ -39,6 +39,7 @@ export const searchWeb = async (query: string): Promise<SearchResult[]> => {
         key: env.googleSearchApiKey,
         cx: env.googleCx,
         q: query,
+        num: numResults,
       },
     });
 

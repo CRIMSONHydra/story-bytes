@@ -19,18 +19,25 @@ interface SeriesGroup {
   language: string;
 }
 
+interface ProgressInfo {
+  chapterOrder: number;
+  chapterTitle: string;
+}
+
 interface Progress {
-  [storyId: string]: number;
+  [storyId: string]: ProgressInfo;
 }
 
 /**
  * Extract a series title by stripping volume/number suffixes.
  */
 function extractSeriesTitle(title: string): string {
-  return title
-    .replace(/[-:]\s*(Volume|Vol\.?)\s*\d+.*$/i, '')
+  // Normalize all dash-like separators to colons so different title formats group together
+  const normalized = title.replace(/\s*[-–—]\s*/g, ': ');
+  return normalized
+    .replace(/:\s*(Volume|Vol\.?)\s*\d+.*$/i, '')
     .replace(/\s*(Volume|Vol\.?)\s*\d+.*$/i, '')
-    .replace(/\s*[-–—]\s*$/, '')
+    .replace(/\s*:\s*$/, '')
     .trim();
 }
 
@@ -81,7 +88,10 @@ export default function StoryList() {
               if (!res.ok) return;
               const prog = await res.json();
               if (prog.lastChapterOrder > 0) {
-                progressMap[story.story_id] = prog.lastChapterOrder;
+                progressMap[story.story_id] = {
+                  chapterOrder: prog.lastChapterOrder,
+                  chapterTitle: prog.lastChapterTitle || `Ch. ${prog.lastChapterOrder}`,
+                };
               }
             } catch { /* ignore */ }
           })
@@ -110,11 +120,11 @@ export default function StoryList() {
           // For single stories, link directly
           if (isSingle) {
             const story = group.stories[0];
-            const lastCh = progress[story.story_id];
+            const prog = progress[story.story_id];
             return (
               <Link
                 key={story.story_id}
-                to={`/story/${story.story_id}/chapter/${lastCh || 1}`}
+                to={`/story/${story.story_id}/chapter/${prog?.chapterOrder || 0}`}
                 className="card story-card"
               >
                 <div className="card-header">
@@ -126,7 +136,7 @@ export default function StoryList() {
                 <p>{story.authors.join(', ')}</p>
                 <div className="card-footer">
                   <span className="lang-tag">{story.language}</span>
-                  {lastCh && <span className="progress-tag">Continue Ch. {lastCh}</span>}
+                  {prog && <span className="progress-tag">Continue: {prog.chapterTitle}</span>}
                 </div>
               </Link>
             );
@@ -155,16 +165,16 @@ export default function StoryList() {
               {isExpanded && (
                 <div className="volume-list">
                   {group.stories.map((story, i) => {
-                    const lastCh = progress[story.story_id];
+                    const prog = progress[story.story_id];
                     return (
                       <Link
                         key={story.story_id}
-                        to={`/story/${story.story_id}/chapter/${lastCh || 1}`}
+                        to={`/story/${story.story_id}/chapter/${prog?.chapterOrder || 0}`}
                         className="volume-item"
                       >
                         <span className="volume-number">Vol. {i + 1}</span>
                         <span className="volume-title">{story.title}</span>
-                        {lastCh && <span className="progress-tag">Ch. {lastCh}</span>}
+                        {prog && <span className="progress-tag">{prog.chapterTitle}</span>}
                       </Link>
                     );
                   })}

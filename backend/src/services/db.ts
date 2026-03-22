@@ -14,6 +14,7 @@ interface SimilarBlock {
   similarity: number;
   chapter_order: number;
   title: string;
+  story_title?: string;
 }
 
 interface ExternalKnowledge {
@@ -53,16 +54,53 @@ export const findSimilarBlocks = async (
   embedding: number[],
   storyId?: string,
   currentChapter?: number,
-  limit = 5
+  limit = 5,
+  priorVolumeIds?: string[],
 ): Promise<SimilarBlock[]> => {
-  // SQL query explanation:
-  // - Joins block_embeddings -> chapter_blocks -> chapters to access story and chapter metadata
-  // - Filters by story_id if provided (for story-specific search)
-  // - Filters by chapter_order <= currentChapter if provided (spoiler prevention)
-  // - Uses pgvector's <=> operator for cosine distance (smaller = more similar)
-  // - Calculates similarity as 1 - distance (converts distance to similarity score)
+  const embeddingString = `[${embedding.join(',')}]`;
+
+  // Cross-volume search: include all chapters from prior volumes + current volume up to currentChapter
+  if (priorVolumeIds && priorVolumeIds.length > 0 && storyId) {
+    const allSeriesIds = [...priorVolumeIds, storyId];
+    const query = `
+      SELECT
+        cb.block_id,
+        cb.text_content,
+        c.chapter_order,
+        c.title,
+        s.title as story_title,
+        1 - (be.vector <=> $1) as similarity
+      FROM block_embeddings be
+      JOIN chapter_blocks cb ON be.block_id = cb.block_id
+      JOIN chapters c ON cb.chapter_id = c.chapter_id
+      JOIN stories s ON c.story_id = s.story_id
+      WHERE
+        be.model = 'gemini-embedding-001'
+        AND (
+          (c.story_id = ANY($2::uuid[]) AND c.story_id != $3)
+          OR (c.story_id = $3 AND ($4::int IS NULL OR c.chapter_order <= $4))
+        )
+      ORDER BY be.vector <=> $1 ASC
+      LIMIT $5;
+    `;
+    try {
+      const result = await pool.query(query, [
+        embeddingString,
+        allSeriesIds,
+        storyId,
+        currentChapter !== undefined ? currentChapter : null,
+        limit,
+      ]);
+      return result.rows;
+    } catch (error) {
+      console.error('Error finding similar blocks (cross-volume):', error);
+      return [];
+    }
+  }
+
+  // Single-volume search (original behavior)
   const query = `
-    SELECT 
+    SELECT
       cb.block_id,
       cb.text_content,
       c.chapter_order,
@@ -71,17 +109,13 @@ export const findSimilarBlocks = async (
     FROM block_embeddings be
     JOIN chapter_blocks cb ON be.block_id = cb.block_id
     JOIN chapters c ON cb.chapter_id = c.chapter_id
-    WHERE 
+    WHERE
       be.model = 'gemini-embedding-001'
       AND ($2::uuid IS NULL OR c.story_id = $2)
       AND ($3::int IS NULL OR c.chapter_order <= $3)
     ORDER BY be.vector <=> $1 ASC
     LIMIT $4;
   `;
-
-  // Format embedding array as PostgreSQL array literal for pgvector
-  // Example: [0.1, 0.2, 0.3] -> '[0.1,0.2,0.3]'
-  const embeddingString = `[${embedding.join(',')}]`;
 
   try {
     const result = await pool.query(query, [
@@ -93,7 +127,6 @@ export const findSimilarBlocks = async (
     return result.rows;
   } catch (error) {
     console.error('Error finding similar blocks:', error);
-    // Return empty array on error to prevent breaking the calling code
     return [];
   }
 };
@@ -175,14 +208,30 @@ export const getAllStories = async () => {
   return result.rows;
 };
 
+/**
+ * Get all stories in the same series, ordered by title (for cross-volume search).
+ * Returns story_ids that share the same series_title.
+ */
+export const getStoriesInSeries = async (storyId: string): Promise<{ story_id: string; title: string }[]> => {
+  const result = await pool.query(
+    `SELECT s2.story_id, s2.title
+     FROM stories s1
+     JOIN stories s2 ON s2.series_title = s1.series_title
+     WHERE s1.story_id = $1
+     ORDER BY s2.title ASC`,
+    [storyId]
+  );
+  return result.rows;
+};
+
 export const getStoryById = async (storyId: string) => {
   const result = await pool.query('SELECT * FROM stories WHERE story_id = $1', [storyId]);
   return result.rows[0];
 };
 
 const FRONT_MATTER_PATTERNS = [
-  'Table of Contents', 'Color Inserts', 'Copyrights', 'Credits',
-  'Title Page', 'Newsletter', 'Character Design', 'Copyright',
+  'Table of Contents', 'Copyrights', 'Credits',
+  'Title Page', 'Newsletter', 'Copyright', 'Cover',
 ];
 const FRONT_MATTER_FILTER = FRONT_MATTER_PATTERNS.map((_, i) => `title NOT ILIKE $${i + 2}`).join(' AND ');
 
@@ -258,14 +307,107 @@ export const findRelevantImages = async (
 };
 
 /**
+ * Get image blocks from chapters that matched in search results.
+ * Returns images from the same chapters as the text blocks found by RAG.
+ */
+export const getImagesFromChapters = async (
+  chapterOrders: number[],
+  storyId: string,
+  currentChapter?: number,
+  limit = 5
+): Promise<{ image_src: string; chapter_order: number; title: string; story_id: string }[]> => {
+  if (chapterOrders.length === 0) return [];
+
+  const query = `
+    SELECT DISTINCT cb.image_src, c.chapter_order, c.title, c.story_id
+    FROM chapter_blocks cb
+    JOIN chapters c ON cb.chapter_id = c.chapter_id
+    WHERE cb.block_type = 'image'
+      AND cb.image_src IS NOT NULL
+      AND c.story_id = $1
+      AND c.chapter_order = ANY($2::int[])
+      AND ($3::int IS NULL OR c.chapter_order <= $3)
+    ORDER BY c.chapter_order ASC
+    LIMIT $4;
+  `;
+
+  try {
+    const result = await pool.query(query, [
+      storyId,
+      chapterOrders,
+      currentChapter !== undefined ? currentChapter : null,
+      limit,
+    ]);
+    return result.rows;
+  } catch (error) {
+    console.error('Error getting chapter images:', error);
+    return [];
+  }
+};
+
+/**
+ * Get all volumes in a series with their filtered chapter lists (for spoiler selector).
+ */
+export const getSeriesChapters = async (storyId: string) => {
+  const seriesStories = await getStoriesInSeries(storyId);
+  const result = [];
+
+  for (const story of seriesStories) {
+    const chapters = await getChaptersByStoryId(story.story_id);
+    result.push({
+      story_id: story.story_id,
+      story_title: story.title,
+      chapters: chapters.map((c: { chapter_order: number; title: string }) => ({
+        chapter_order: c.chapter_order,
+        title: c.title,
+      })),
+    });
+  }
+
+  return result;
+};
+
+/**
  * Phase 4: Keyword-based full-text search using PostgreSQL ts_vector.
  */
 export const findBlocksByKeyword = async (
   query: string,
   storyId?: string,
   currentChapter?: number,
-  limit = 5
+  limit = 5,
+  priorVolumeIds?: string[],
 ): Promise<SimilarBlock[]> => {
+  if (priorVolumeIds && priorVolumeIds.length > 0 && storyId) {
+    const allSeriesIds = [...priorVolumeIds, storyId];
+    const sql = `
+      SELECT
+        cb.block_id,
+        cb.text_content,
+        c.chapter_order,
+        c.title,
+        s.title as story_title,
+        ts_rank(to_tsvector('english', COALESCE(cb.text_content, '')), plainto_tsquery('english', $1)) as similarity
+      FROM chapter_blocks cb
+      JOIN chapters c ON cb.chapter_id = c.chapter_id
+      JOIN stories s ON c.story_id = s.story_id
+      WHERE
+        to_tsvector('english', COALESCE(cb.text_content, '')) @@ plainto_tsquery('english', $1)
+        AND (
+          (c.story_id = ANY($2::uuid[]) AND c.story_id != $3)
+          OR (c.story_id = $3 AND ($4::int IS NULL OR c.chapter_order <= $4))
+        )
+      ORDER BY similarity DESC
+      LIMIT $5;
+    `;
+    try {
+      const result = await pool.query(sql, [query, allSeriesIds, storyId, currentChapter !== undefined ? currentChapter : null, limit]);
+      return result.rows;
+    } catch (error) {
+      console.error('Error in keyword search (cross-volume):', error);
+      return [];
+    }
+  }
+
   const sql = `
     SELECT
       cb.block_id,
@@ -343,12 +485,19 @@ export const getChapterTexts = async (
 /**
  * Phase 5: Reading progress
  */
-export const getReadingProgress = async (userId: string, storyId: string): Promise<number | null> => {
+export const getReadingProgress = async (userId: string, storyId: string): Promise<{ lastChapterOrder: number; lastChapterTitle: string } | null> => {
   const result = await pool.query(
-    'SELECT last_chapter_order FROM reading_progress WHERE user_id = $1 AND story_id = $2',
+    `SELECT rp.last_chapter_order, c.title
+     FROM reading_progress rp
+     LEFT JOIN chapters c ON c.story_id = rp.story_id AND c.chapter_order = rp.last_chapter_order
+     WHERE rp.user_id = $1 AND rp.story_id = $2`,
     [userId, storyId]
   );
-  return result.rows[0]?.last_chapter_order ?? null;
+  if (!result.rows[0]) return null;
+  return {
+    lastChapterOrder: result.rows[0].last_chapter_order,
+    lastChapterTitle: result.rows[0].title ?? '',
+  };
 };
 
 export const upsertReadingProgress = async (userId: string, storyId: string, chapterOrder: number): Promise<void> => {
