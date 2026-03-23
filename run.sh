@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-# Start both backend and frontend dev servers with hot reload.
-# Press Ctrl+C to stop both.
+# Run Story Bytes.
+# Usage: ./run.sh [--dev]
+#   --dev   Run backend + frontend dev servers with hot reload (uses local DB)
+#   (default) Run via docker compose (app + DB containers, port 80)
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 
-trap 'trap - INT TERM; kill -- -$$; exit' INT TERM
+if [[ "${1:-}" == "--dev" ]]; then
+  trap 'trap - INT TERM; kill -- -$$; exit' INT TERM
 
-echo "Starting backend (http://localhost:5001)..."
-pnpm --filter backend dev &
+  echo "Starting backend (http://localhost:5001)..."
+  pnpm --filter backend dev &
 
-echo "Starting frontend (http://localhost:5173)..."
-pnpm --filter frontend dev &
+  echo "Starting frontend (http://localhost:5173)..."
+  pnpm --filter frontend dev &
 
-wait
+  wait
+else
+  echo "Starting Story Bytes (http://localhost)..."
+  docker compose up
+fi

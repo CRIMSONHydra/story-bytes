@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-const API_BASE = 'http://localhost:5001';
+import { API_BASE } from '../config';
 
 interface Story {
   story_id: string;

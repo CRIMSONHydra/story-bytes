@@ -3,6 +3,16 @@ import { getAssetById, getStoryById } from '../services/db';
 import { readFile, access } from 'fs/promises';
 import { join, extname, resolve } from 'path';
 
+/**
+ * Resolve the project root directory.
+ * In Docker (NODE_ENV=production), cwd is /app (the project root).
+ * In dev, cwd is backend/, so go up one level.
+ */
+export function getProjectRoot(): string {
+  if (process.env.NODE_ENV === 'production') return process.cwd();
+  return resolve(process.cwd(), '..');
+}
+
 const MIME_MAP: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
   '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
@@ -85,16 +95,19 @@ export const handleGetStoryImage = async (req: Request, res: Response) => {
     }
 
     // Find the EPUB file — use stored epub_path or fall back to glob search
-    const projectRoot = resolve(process.cwd(), '..');
+    const projectRoot = getProjectRoot();
     let epubPath: string | null = null;
 
-    // Prefer stored epub_path from database
+    // Prefer stored epub_path from database (try absolute, then relative to project root)
     if (story.epub_path) {
-      const candidate = resolve(projectRoot, story.epub_path);
-      try {
-        await access(candidate);
-        epubPath = candidate;
-      } catch { /* file not found, fall through to glob */ }
+      const candidates = [story.epub_path, resolve(projectRoot, story.epub_path)];
+      for (const candidate of candidates) {
+        try {
+          await access(candidate);
+          epubPath = candidate;
+          break;
+        } catch { /* try next */ }
+      }
     }
 
     // Fallback: glob search with best-match scoring

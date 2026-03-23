@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 interface ChatInterfaceProps {
-  storyId: string;
-  currentChapter: number;
+  storyId?: string;
+  currentChapter?: number;
   totalChapters?: number;
 }
 
@@ -35,7 +35,7 @@ interface SeriesVolume {
   chapters: { chapter_order: number; title: string }[];
 }
 
-const API_BASE = 'http://localhost:5001';
+import { API_BASE } from '../config';
 
 export default function ChatInterface({ storyId, currentChapter, totalChapters }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([
@@ -44,14 +44,15 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<ChatMode>('recall');
-  const [spoilerStoryId, setSpoilerStoryId] = useState(storyId);
-  const [spoilerChapter, setSpoilerChapter] = useState(currentChapter);
+  const [spoilerStoryId, setSpoilerStoryId] = useState(storyId || '');
+  const [spoilerChapter, setSpoilerChapter] = useState(currentChapter || 0);
   const [seriesVolumes, setSeriesVolumes] = useState<SeriesVolume[]>([]);
   const [expandedImages, setExpandedImages] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch series chapters for cross-volume spoiler selector
   useEffect(() => {
+    if (!storyId) return;
     fetch(`${API_BASE}/api/stories/${storyId}/series-chapters`)
       .then(res => res.json())
       .then((data: SeriesVolume[]) => {
@@ -61,8 +62,8 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
   }, [storyId]);
 
   useEffect(() => {
-    setSpoilerStoryId(storyId);
-    setSpoilerChapter(currentChapter);
+    if (storyId) setSpoilerStoryId(storyId);
+    if (currentChapter !== undefined) setSpoilerChapter(currentChapter);
   }, [storyId, currentChapter]);
 
   const scrollToBottom = () => {
@@ -110,8 +111,13 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
   };
 
   const handleSourceClick = (source: ChatSource) => {
-    // Navigate to the chapter/block
-    window.location.hash = `#block-${source.blockId}`;
+    if (storyId) {
+      // In reader mode: scroll to block
+      window.location.hash = `#block-${source.blockId}`;
+    } else {
+      // In standalone mode: navigate to reader
+      window.location.href = `/story/${spoilerStoryId}/chapter/${source.chapterOrder}#block-${source.blockId}`;
+    }
   };
 
   return (
@@ -130,7 +136,7 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
             </button>
           ))}
         </div>
-        <div className="spoiler-selector">
+        {storyId && <div className="spoiler-selector">
           <label>Spoiler limit:</label>
           <select
             value={`${spoilerStoryId}:${spoilerChapter}`}
@@ -154,14 +160,14 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
                 </optgroup>
               ))
             ) : (
-              Array.from({ length: totalChapters || Math.max(currentChapter + 5, 20) }, (_, i) => i + 1).map(ch => (
+              Array.from({ length: totalChapters || Math.max((currentChapter ?? 0) + 5, 20) }, (_, i) => i + 1).map(ch => (
                 <option key={ch} value={`${storyId}:${ch}`}>
                   Ch. {ch}{ch === currentChapter ? ' (current)' : ''}
                 </option>
               ))
             )}
           </select>
-        </div>
+        </div>}
       </div>
 
       {/* Messages */}

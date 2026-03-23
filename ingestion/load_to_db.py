@@ -88,7 +88,7 @@ def compute_series_title(title: str) -> str:
     return result.strip()
 
 
-def insert_story(cursor, story_data: Dict[str, Any], content_type: str = "novel", epub_path: str = "") -> str:
+def insert_story(cursor, story_data: Dict[str, Any], content_type: str = "novel", epub_path: str = "", series_title_override: str = "") -> str:
     """Insert story and return story_id."""
     external_id = story_data.get("identifier")
 
@@ -112,7 +112,7 @@ def insert_story(cursor, story_data: Dict[str, Any], content_type: str = "novel"
                 story_data.get("authors", []),
                 story_data.get("language"),
                 content_type,
-                compute_series_title(story_data.get("title", "")),
+                series_title_override or compute_series_title(story_data.get("title", "")),
                 epub_path,
                 story_id
             )
@@ -435,6 +435,11 @@ def main():
         action="store_true",
         help="Enable image tagging with Gemini vision during ingestion.",
     )
+    parser.add_argument(
+        "--series-title",
+        default="",
+        help="Override auto-detected series title for grouping volumes.",
+    )
     args = parser.parse_args()
 
     if not args.input.exists():
@@ -477,7 +482,7 @@ def main():
                     if epub_path:
                         break
 
-                story_id = insert_story(cursor, data, content_type, epub_path=epub_path)
+                story_id = insert_story(cursor, data, content_type, epub_path=epub_path, series_title_override=args.series_title)
                 insert_chapters(cursor, story_id, chapters, client, tag_images=args.tag_images)
         logging.info("Successfully loaded story into database.")
     finally:

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import ChatInterface from '../components/ChatInterface';
 import ComicViewer from '../components/ComicViewer';
 
-const API_BASE = 'http://localhost:5001';
+import { API_BASE } from '../config';
 
 interface Story {
   story_id: string;
@@ -134,7 +134,7 @@ export default function Reader() {
         </header>
 
         {isComicMode ? (
-          <ComicViewer blocks={chapter.blocks} />
+          <ComicViewer blocks={chapter.blocks} storyId={storyId!} />
         ) : (
           <div className="chapter-text">
             {chapter.blocks.map(block => (

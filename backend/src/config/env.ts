@@ -26,6 +26,10 @@ const envSchema = z.object({
   DB_HOST: z.string().optional(),
   DB_PORT: z.coerce.number().optional(),
   DB_NAME: z.string().optional(),
+  AWS_BUCKET: z.string().optional(),
+  AWS_REGION: z.string().optional(),
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
 });
 
 // Validate environment variables
@@ -58,6 +62,9 @@ export const env = {
   googleSearchApiKey: data.GOOGLE_SEARCH_API_KEY,
   googleCx: data.GOOGLE_CX,
   geminiApiKey: data.GEMINI_API_KEY,
+  awsBucket: data.AWS_BUCKET,
+  awsRegion: data.AWS_REGION,
+  s3Enabled: Boolean(data.AWS_BUCKET && data.AWS_REGION),
 };
 
 export type Env = typeof env;

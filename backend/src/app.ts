@@ -5,10 +5,14 @@
 
 import cors from 'cors';
 import express from 'express';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 import { env } from './config/env';
 import { checkDatabase } from './db/pool';
 import routes from './routes';
+
+const pkg = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf-8'));
 
 /**
  * Creates and configures the Express application.
@@ -26,7 +30,7 @@ export const createApp = () => {
   app.get('/', (_req, res) => {
     res.json({
       service: 'story-bytes-api',
-      version: '1.0.0',
+      version: pkg.version,
       docs: null
     });
   });

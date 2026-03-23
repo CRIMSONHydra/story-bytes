@@ -1,0 +1,14 @@
+node_modules
+.venv
+__pycache__
+*.pyc
+dataset
+processed
+.env
+.env.local
+.git
+.github
+backend/dist
+frontend/dist
+*.md
+!README.md
