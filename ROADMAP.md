@@ -42,7 +42,7 @@ React 19 SPA (Vite)
 
 - Embedding model mismatch resolved (migrated to `gemini-embedding-001` everywhere)
 - pgvector enabled with HNSW indexes
-- 14 backend tests passing
+- 49 backend tests + 133 Python tests passing
 - Cross-volume spoiler support
 - Scene breaks render correctly
 - Chapter mismatch fixed

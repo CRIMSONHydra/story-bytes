@@ -7,9 +7,15 @@ import { getAdminStories, deleteStory, getSeriesTitleForStory, getStoryIdsBySeri
 
 const uuidSchema = z.string().uuid();
 
+const PYTHON_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
 function runPython(cwd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('uv', ['run', 'python', ...args], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawn('uv', ['run', 'python', ...args], {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: PYTHON_TIMEOUT_MS,
+    });
     let stdout = '';
     let stderr = '';
     proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
@@ -81,9 +87,15 @@ export const handleAdminIngest = async (req: Request, res: Response) => {
     await copyFile(file.path, datasetPath);
 
     // Step 1: Extract
-    const extractScript = ext === '.epub'
-      ? ['ingestion/epub/extract_epub.py', datasetPath, '-o', 'processed', '-v']
-      : ['ingestion/comic/extract_comic.py', datasetPath, '-o', 'processed', '-v', '--ocr'];
+    let extractScript: string[];
+    if (ext === '.epub') {
+      extractScript = ['ingestion/epub/extract_epub.py', datasetPath, '-o', 'processed', '-v'];
+    } else if (ext === '.cbz' || ext === '.cbr') {
+      extractScript = ['ingestion/comic/extract_comic.py', datasetPath, '-o', 'processed', '-v', '--ocr'];
+    } else {
+      res.status(400).json({ error: `Unsupported file type: ${ext}` });
+      return;
+    }
 
     await runPython(projectRoot, extractScript);
 
@@ -107,9 +119,9 @@ export const handleAdminIngest = async (req: Request, res: Response) => {
         await runPython(projectRoot, ['ingestion/enrich_images.py', '--story-id', storyIdMatch[1]]);
 
         // Re-enrich entire series if this is part of one
-        const seriesTitle = await getSeriesTitleForStory(storyIdMatch[1]);
-        if (seriesTitle) {
-          const seriesIds = await getStoryIdsBySeriesTitle(seriesTitle);
+        const storySeriesTitle = await getSeriesTitleForStory(storyIdMatch[1]);
+        if (storySeriesTitle) {
+          const seriesIds = await getStoryIdsBySeriesTitle(storySeriesTitle);
           for (const sid of seriesIds) {
             if (sid !== storyIdMatch[1]) {
               await runPython(projectRoot, ['ingestion/enrich_images.py', '--story-id', sid]);

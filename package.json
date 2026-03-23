@@ -1,7 +1,7 @@
 {
   "name": "story-bytes",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Local-first story knowledge base with AI-powered Q&A and spoiler-aware chat.",
   "scripts": {
     "dev:backend": "pnpm --filter backend dev",

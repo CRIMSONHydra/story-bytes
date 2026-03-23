@@ -7,7 +7,12 @@ export const upload = multer({
   dest: UPLOAD_DIR,
   limits: { fileSize: MAX_FILE_SIZE },
   fileFilter: (_req, file, cb) => {
-    const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    const dotIndex = file.originalname.lastIndexOf('.');
+    if (dotIndex === -1) {
+      cb(new Error('File must have an extension. Accepted: .epub, .cbz, .cbr'));
+      return;
+    }
+    const ext = file.originalname.toLowerCase().slice(dotIndex);
     const allowed = ['.epub', '.cbz', '.cbr'];
     if (allowed.includes(ext)) {
       cb(null, true);

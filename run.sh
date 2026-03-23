@@ -4,7 +4,7 @@
 #   --dev   Run backend + frontend dev servers with hot reload (uses local DB)
 #   (default) Run via docker compose (app + DB containers, port 80)
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 
 if [[ "${1:-}" == "--dev" ]]; then
   trap 'trap - INT TERM; kill -- -$$; exit' INT TERM
