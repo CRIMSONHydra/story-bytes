@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { spawn } from 'child_process';
-import { unlink, copyFile, mkdir } from 'fs/promises';
+import { randomUUID } from 'crypto';
+import { unlink, copyFile, mkdir, rm } from 'fs/promises';
 import { resolve, basename } from 'path';
 import { getAdminStories, deleteStory, getSeriesTitleForStory, getStoryIdsBySeriesTitle, getDistinctSeries } from '../services/admin';
+import { getProjectRoot } from './assets';
 
 const uuidSchema = z.string().uuid();
 
@@ -75,23 +77,31 @@ export const handleAdminIngest = async (req: Request, res: Response) => {
     return;
   }
 
-  const projectRoot = resolve(process.cwd(), '..');
+  const projectRoot = getProjectRoot();
   const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
   const fileName = basename(file.originalname);
 
+  // Per-request work directory to prevent races between concurrent ingests
+  const requestId = randomUUID();
+  const workDir = resolve(projectRoot, 'processed', `ingest-${requestId}`);
+
   try {
-    // Copy file to dataset/ for persistent image serving
+    await mkdir(workDir, { recursive: true });
+
+    // Copy file to work dir and to dataset/ for persistent image serving
+    const workFilePath = resolve(workDir, fileName);
+    await copyFile(file.path, workFilePath);
+
     const datasetDir = resolve(projectRoot, 'dataset');
     await mkdir(datasetDir, { recursive: true });
-    const datasetPath = resolve(datasetDir, fileName);
-    await copyFile(file.path, datasetPath);
+    await copyFile(file.path, resolve(datasetDir, fileName));
 
-    // Step 1: Extract
+    // Step 1: Extract into per-request output dir
     let extractScript: string[];
     if (ext === '.epub') {
-      extractScript = ['ingestion/epub/extract_epub.py', datasetPath, '-o', 'processed', '-v'];
+      extractScript = ['ingestion/epub/extract_epub.py', workFilePath, '-o', workDir, '-v'];
     } else if (ext === '.cbz' || ext === '.cbr') {
-      extractScript = ['ingestion/comic/extract_comic.py', datasetPath, '-o', 'processed', '-v', '--ocr'];
+      extractScript = ['ingestion/comic/extract_comic.py', workFilePath, '-o', workDir, '-v', '--ocr'];
     } else {
       res.status(400).json({ error: `Unsupported file type: ${ext}` });
       return;
@@ -99,9 +109,9 @@ export const handleAdminIngest = async (req: Request, res: Response) => {
 
     await runPython(projectRoot, extractScript);
 
-    // Find the output JSON
+    // Find the output JSON in the work dir
     const jsonStem = fileName.replace(/\.[^.]+$/, '');
-    const outputJson = resolve(projectRoot, 'processed', `${jsonStem}.json`);
+    const outputJson = resolve(workDir, `${jsonStem}.json`);
 
     // Step 2: Load + tag images
     const seriesTitle = req.body?.seriesTitle as string | undefined;
@@ -114,8 +124,8 @@ export const handleAdminIngest = async (req: Request, res: Response) => {
       || loadOutput.match(/story_id.*?([0-9a-f-]{36})/i);
 
     // Step 3: Enrich images with story context
-    try {
-      if (storyIdMatch) {
+    if (storyIdMatch) {
+      try {
         await runPython(projectRoot, ['ingestion/enrich_images.py', '--story-id', storyIdMatch[1]]);
 
         // Re-enrich entire series if this is part of one
@@ -128,12 +138,11 @@ export const handleAdminIngest = async (req: Request, res: Response) => {
             }
           }
         }
-      } else {
-        // Fallback: enrich all
-        await runPython(projectRoot, ['ingestion/enrich_images.py', '--all']);
+      } catch (enrichError) {
+        console.warn('Image enrichment failed (non-fatal):', enrichError);
       }
-    } catch (enrichError) {
-      console.warn('Image enrichment failed (non-fatal):', enrichError);
+    } else {
+      console.warn(`Could not parse story_id from load_to_db.py output. Skipping enrichment. Output: ${loadOutput.slice(-200)}`);
     }
 
     res.json({
@@ -146,5 +155,6 @@ export const handleAdminIngest = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Ingestion failed', details: String(error) });
   } finally {
     await unlink(file.path).catch(() => { /* best effort cleanup */ });
+    await rm(workDir, { recursive: true, force: true }).catch(() => { /* best effort cleanup */ });
   }
 };

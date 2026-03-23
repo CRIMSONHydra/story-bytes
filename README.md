@@ -10,6 +10,12 @@ cp .env.example .env    # Add your API keys
 ./run.sh                # Start app + DB → http://localhost
 ```
 
+Or pull the pre-built image from Docker Hub:
+
+```bash
+docker pull naverdo/story-bytes:latest
+```
+
 ## Quick Start (Dev)
 
 ```bash

@@ -8,7 +8,7 @@ import { join, extname, resolve } from 'path';
  * In Docker (NODE_ENV=production), cwd is /app (the project root).
  * In dev, cwd is backend/, so go up one level.
  */
-function getProjectRoot(): string {
+export function getProjectRoot(): string {
   if (process.env.NODE_ENV === 'production') return process.cwd();
   return resolve(process.cwd(), '..');
 }

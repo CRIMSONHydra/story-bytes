@@ -105,7 +105,7 @@ CREATE INDEX idx_knowledge_embeddings_vector
 
 ### 1.4 Unify embedding model
 
-- Switch `ingestion/load_to_db.py` from `all-MiniLM-L6-v2` to Gemini `text-embedding-004`
+- Switch `ingestion/load_to_db.py` from `all-MiniLM-L6-v2` to Gemini `gemini-embedding-001`
 - Remove `sentence-transformers` dependency, use Google GenAI API with batching
 - Re-ingest all 5 processed volumes with correct 768-dim embeddings
 
@@ -180,7 +180,7 @@ During ingestion, use Gemini vision (multimodal) to generate basic metadata for 
 - **Store in `assets` table**:
   - `visual_description TEXT` -- "A red-haired girl sparring with a tall dark-skinned woman in a grassy field"
   - `visual_tags JSONB` -- `{"characters_visual": ["red-haired girl", "tall dark-skinned woman"], "setting": "grassy field", "mood": "intense", "action": "sparring"}`
-- **Image embeddings**: Embed the visual description text with `text-embedding-004`, store in new `asset_embeddings` table with HNSW index
+- **Image embeddings**: Embed the visual description text with `gemini-embedding-001`, store in new `asset_embeddings` table with HNSW index
 - At this stage, the model doesn't know character names -- only visual features
 
 ### Pass 2 -- Post-ingestion enrichment
@@ -379,7 +379,7 @@ Phase 1 (Fix embeddings)
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Embedding model | Gemini `gemini-embedding-001` (768-dim) | Consistency between ingest and query; `text-embedding-004` was retired |
+| Embedding model | Gemini `gemini-embedding-001` (768-dim) | Consistency between ingest and query; `gemini-embedding-001` was retired |
 | Vector store | pgvector in PostgreSQL | Single database, HNSW indexes, sufficient for this scale |
 | Image analysis | Gemini vision (multimodal) | Same API/billing as text; strong visual understanding |
 | Foreshadowing | LLM prompt engineering at query time | Simpler than ingest-time tagging; more flexible |
