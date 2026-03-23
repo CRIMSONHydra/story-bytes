@@ -20,10 +20,12 @@ RUN pnpm --filter frontend build
 # Stage 2: Production runtime
 FROM node:20-bullseye-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    nginx supervisor wget \
+    nginx supervisor wget curl \
     python3 python3-pip python3-pil \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
@@ -56,6 +58,6 @@ VOLUME ["/app/dataset", "/app/processed"]
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-    CMD wget --no-verbose --tries=1 --spider http://localhost/api/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost/health || exit 1
 
 ENTRYPOINT ["/start.sh"]

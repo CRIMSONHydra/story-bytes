@@ -26,7 +26,7 @@ export const createApp = () => {
   app.get('/', (_req, res) => {
     res.json({
       service: 'story-bytes-api',
-      version: '1.1.0',
+      version: '1.1.1',
       docs: null
     });
   });
