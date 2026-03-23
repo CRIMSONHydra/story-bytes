@@ -9,3 +9,5 @@ lxml
 rarfile
 pytesseract
 Pillow
+# Testing
+pytest
