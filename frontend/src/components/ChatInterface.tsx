@@ -35,7 +35,7 @@ interface SeriesVolume {
   chapters: { chapter_order: number; title: string }[];
 }
 
-const API_BASE = 'http://localhost:5001';
+import { API_BASE } from '../config';
 
 export default function ChatInterface({ storyId, currentChapter, totalChapters }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([

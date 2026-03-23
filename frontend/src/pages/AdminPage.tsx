@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-const API_BASE = 'http://localhost:5001';
+import { API_BASE } from '../config';
 
 interface AdminStory {
   story_id: string;

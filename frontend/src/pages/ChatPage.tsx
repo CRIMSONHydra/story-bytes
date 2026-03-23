@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import ChatInterface from '../components/ChatInterface';
 
-const API_BASE = 'http://localhost:5001';
+import { API_BASE } from '../config';
 
 interface SeriesInfo {
   series_title: string;
