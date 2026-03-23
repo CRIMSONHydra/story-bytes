@@ -15,7 +15,6 @@
   "keywords": [],
   "author": "",
   "license": "MIT",
-  "type": "module",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1014.0",
     "@google/genai": "^1.30.0",
