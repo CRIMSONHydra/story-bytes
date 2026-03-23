@@ -2,7 +2,7 @@ services:
   db:
     image: pgvector/pgvector:pg18
     environment:
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-1234321}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
       POSTGRES_DB: ${DB_NAME:-postgres}
     volumes:
       - pgdata:/var/lib/postgresql

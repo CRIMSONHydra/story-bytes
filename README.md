@@ -176,7 +176,7 @@ uv run python ingestion/enrich_images.py --all
 ### Running Tests
 
 ```bash
-pnpm test                              # 43 backend tests
+pnpm test                              # 49 backend tests
 uv run pytest ingestion/tests/ -v      # 133 Python tests
 pnpm lint                              # Lint both packages
 pnpm build                             # Type-check + build

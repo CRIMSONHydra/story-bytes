@@ -23,7 +23,10 @@ while [ $TRIES -lt $MAX_TRIES ]; do
 done
 
 if [ $TRIES -eq $MAX_TRIES ]; then
-    echo "WARNING: Backend not fully ready. Starting nginx anyway."
+    echo "ERROR: Backend failed to start after ${MAX_TRIES}s. Check DB_HOST and DB_PASSWORD."
+    echo "Logs from backend:"
+    supervisorctl tail backend stderr || true
+    exit 1
 fi
 
 # Start nginx via supervisor

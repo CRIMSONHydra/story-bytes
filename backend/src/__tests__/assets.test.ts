@@ -153,14 +153,13 @@ describe('GET /api/stories/:storyId/image', () => {
 });
 
 describe('getProjectRoot resolution', () => {
-  it('uses process.cwd() in production', async () => {
-    // Import the module fresh to test the helper
-    const originalEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
 
-    // The getProjectRoot helper should return cwd() in production
-    // We verify this indirectly: a story with no epub_path and no matching glob returns 404
-    // (not a crash from wrong path)
+  it('uses process.cwd() in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+
     vi.mocked(getStoryById).mockResolvedValueOnce({
       story_id: TEST_UUID,
       title: 'Test',
@@ -171,9 +170,7 @@ describe('getProjectRoot resolution', () => {
       .get(`/api/stories/${TEST_UUID}/image`)
       .query({ path: 'Images/test.jpg' });
 
+    // Should be 404 (not 500 from path resolution crash)
     expect(response.status).toBe(404);
-    // Should NOT be 500 (which would indicate a path resolution crash)
-
-    process.env.NODE_ENV = originalEnv;
   });
 });
