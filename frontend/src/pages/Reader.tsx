@@ -134,7 +134,7 @@ export default function Reader() {
         </header>
 
         {isComicMode ? (
-          <ComicViewer blocks={chapter.blocks} />
+          <ComicViewer blocks={chapter.blocks} storyId={storyId!} />
         ) : (
           <div className="chapter-text">
             {chapter.blocks.map(block => (

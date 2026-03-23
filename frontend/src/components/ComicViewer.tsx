@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { API_BASE } from '../config';
 
 interface Block {
   block_id: string;
@@ -9,10 +10,11 @@ interface Block {
 
 interface ComicViewerProps {
   blocks: Block[];
+  storyId: string;
   onPageChange?: (pageIndex: number) => void;
 }
 
-export default function ComicViewer({ blocks, onPageChange }: ComicViewerProps) {
+export default function ComicViewer({ blocks, storyId, onPageChange }: ComicViewerProps) {
   const imageBlocks = blocks.filter(b => b.block_type === 'image' && b.image_src);
   const [currentPage, setCurrentPage] = useState(0);
   const [fitMode, setFitMode] = useState<'width' | 'height'>('width');
@@ -61,7 +63,7 @@ export default function ComicViewer({ blocks, onPageChange }: ComicViewerProps) 
       </div>
       <div className="comic-page-container" onClick={() => goToPage(currentPage + 1)}>
         <img
-          src={current.image_src}
+          src={`${API_BASE}/api/stories/${storyId}/image?path=${encodeURIComponent(current.image_src || '')}`}
           alt={`Page ${currentPage + 1}`}
           className={`comic-page comic-fit-${fitMode}`}
         />
