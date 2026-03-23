@@ -1,4 +1,4 @@
-# Stage 1: Build backend + frontend
+# Stage 1: Build frontend
 FROM node:20-alpine AS build
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
@@ -9,7 +9,7 @@ COPY backend/package.json backend/
 COPY frontend/package.json frontend/
 RUN pnpm install --frozen-lockfile
 
-# Build backend
+# Type-check backend
 COPY backend/ backend/
 RUN pnpm --filter backend build
 
@@ -23,14 +23,17 @@ RUN apk add --no-cache python3 py3-pip py3-pillow tesseract-ocr postgresql-clien
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
-# Install production Node dependencies (cached layer)
+# Install all Node dependencies (tsx needed to run TS source)
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY backend/package.json backend/
 COPY frontend/package.json frontend/
-RUN pnpm install --frozen-lockfile --prod
+RUN pnpm install --frozen-lockfile
 
-# Copy built artifacts
-COPY --from=build /app/backend/dist backend/dist
+# Copy backend source (tsx runs TS directly)
+COPY backend/src backend/src
+COPY backend/tsconfig.json backend/
+
+# Copy frontend build artifacts
 COPY --from=build /app/frontend/dist frontend/dist
 
 # Copy database schema and ingestion scripts
@@ -43,4 +46,4 @@ VOLUME ["/app/dataset", "/app/processed"]
 
 EXPOSE 5001
 ENV NODE_ENV=production
-CMD ["node", "backend/dist/server.js"]
+CMD ["npx", "tsx", "backend/src/server.ts"]
