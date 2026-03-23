@@ -15,12 +15,43 @@ interface AdminStory {
   asset_count: number;
 }
 
+interface SeriesGroup {
+  seriesTitle: string;
+  stories: AdminStory[];
+  totalChapters: number;
+  totalBlocks: number;
+  totalEmbeddings: number;
+  totalAssets: number;
+}
+
+function groupBySeries(stories: AdminStory[]): SeriesGroup[] {
+  const groups = new Map<string, AdminStory[]>();
+
+  for (const story of stories) {
+    const key = story.series_title || story.title;
+    const list = groups.get(key) || [];
+    list.push(story);
+    groups.set(key, list);
+  }
+
+  return Array.from(groups.entries()).map(([seriesTitle, stories]) => ({
+    seriesTitle,
+    stories: stories.sort((a, b) => a.title.localeCompare(b.title)),
+    totalChapters: stories.reduce((s, st) => s + st.chapter_count, 0),
+    totalBlocks: stories.reduce((s, st) => s + st.block_count, 0),
+    totalEmbeddings: stories.reduce((s, st) => s + st.embedding_count, 0),
+    totalAssets: stories.reduce((s, st) => s + st.asset_count, 0),
+  }));
+}
+
 export default function AdminPage() {
   const [stories, setStories] = useState<AdminStory[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [selectedSeries, setSelectedSeries] = useState('');
+  const [expandedSeries, setExpandedSeries] = useState<string | null>(null);
 
   const fetchStories = () => {
     setLoading(true);
@@ -32,14 +63,13 @@ export default function AdminPage() {
 
   useEffect(fetchStories, []);
 
+  const existingSeries = [...new Set(stories.map(s => s.series_title).filter(Boolean))] as string[];
+
   const handleDelete = async (storyId: string, title: string) => {
     if (!confirm(`Delete "${title}"? This removes all chapters, embeddings, and assets.`)) return;
-
     try {
       const res = await fetch(`${API_BASE}/api/admin/stories/${storyId}`, { method: 'DELETE' });
-      if (res.ok) {
-        setStories(prev => prev.filter(s => s.story_id !== storyId));
-      }
+      if (res.ok) setStories(prev => prev.filter(s => s.story_id !== storyId));
     } catch {
       alert('Failed to delete story');
     }
@@ -50,11 +80,12 @@ export default function AdminPage() {
     if (!file || uploading) return;
 
     setUploading(true);
-    setUploadStatus('Uploading and processing...');
+    setUploadStatus('Uploading and processing (this may take a few minutes)...');
 
     try {
       const formData = new FormData();
       formData.append('file', file);
+      if (selectedSeries) formData.append('seriesTitle', selectedSeries);
 
       const res = await fetch(`${API_BASE}/api/admin/ingest`, {
         method: 'POST',
@@ -65,6 +96,7 @@ export default function AdminPage() {
       if (res.ok) {
         setUploadStatus(`Ingestion complete! Story ID: ${data.storyId || 'unknown'}`);
         setFile(null);
+        setSelectedSeries('');
         fetchStories();
       } else {
         setUploadStatus(`Error: ${data.error || 'Unknown error'}`);
@@ -75,6 +107,8 @@ export default function AdminPage() {
       setUploading(false);
     }
   };
+
+  const seriesGroups = groupBySeries(stories);
 
   return (
     <div className="admin-page">
@@ -89,6 +123,17 @@ export default function AdminPage() {
             onChange={e => setFile(e.target.files?.[0] || null)}
             disabled={uploading}
           />
+          <select
+            value={selectedSeries}
+            onChange={e => setSelectedSeries(e.target.value)}
+            disabled={uploading}
+            className="series-select"
+          >
+            <option value="">Auto-detect series</option>
+            {existingSeries.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
           <button type="submit" disabled={!file || uploading}>
             {uploading ? 'Processing...' : 'Upload & Ingest'}
           </button>
@@ -103,47 +148,59 @@ export default function AdminPage() {
         <h3>Stories ({stories.length})</h3>
         {loading ? (
           <p>Loading...</p>
-        ) : stories.length === 0 ? (
+        ) : seriesGroups.length === 0 ? (
           <p>No stories ingested yet.</p>
         ) : (
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Type</th>
-                <th>Chapters</th>
-                <th>Blocks</th>
-                <th>Embeddings</th>
-                <th>Assets</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stories.map(story => (
-                <tr key={story.story_id}>
-                  <td className="story-title-cell">
-                    <span>{story.title}</span>
-                    {story.series_title && (
-                      <span className="series-badge">{story.series_title}</span>
-                    )}
-                  </td>
-                  <td><span className={`type-tag type-${story.content_type}`}>{story.content_type}</span></td>
-                  <td>{story.chapter_count}</td>
-                  <td>{story.block_count}</td>
-                  <td>{story.embedding_count}</td>
-                  <td>{story.asset_count}</td>
-                  <td>
-                    <button
-                      className="delete-btn"
-                      onClick={() => handleDelete(story.story_id, story.title)}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="admin-series-list">
+            {seriesGroups.map(group => {
+              const isSingle = group.stories.length === 1;
+              const isExpanded = expandedSeries === group.seriesTitle;
+
+              return (
+                <div key={group.seriesTitle} className="admin-series-group">
+                  <div
+                    className="admin-series-header"
+                    onClick={() => setExpandedSeries(isExpanded ? null : group.seriesTitle)}
+                  >
+                    <div className="admin-series-title">
+                      <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                      <strong>{group.seriesTitle}</strong>
+                      {!isSingle && <span className="volume-count">{group.stories.length} volumes</span>}
+                      <span className={`type-tag type-${group.stories[0].content_type}`}>
+                        {group.stories[0].content_type}
+                      </span>
+                    </div>
+                    <div className="admin-series-counts">
+                      <span>{group.totalChapters} ch</span>
+                      <span>{group.totalBlocks} blocks</span>
+                      <span>{group.totalEmbeddings} emb</span>
+                      <span>{group.totalAssets} assets</span>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="admin-series-volumes">
+                      {group.stories.map(story => (
+                        <div key={story.story_id} className="admin-volume-row">
+                          <span className="admin-vol-title">{story.title}</span>
+                          <span className="admin-vol-stat">{story.chapter_count} ch</span>
+                          <span className="admin-vol-stat">{story.block_count} blocks</span>
+                          <span className="admin-vol-stat">{story.embedding_count} emb</span>
+                          <span className="admin-vol-stat">{story.asset_count} assets</span>
+                          <button
+                            className="delete-btn"
+                            onClick={ev => { ev.stopPropagation(); handleDelete(story.story_id, story.title); }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

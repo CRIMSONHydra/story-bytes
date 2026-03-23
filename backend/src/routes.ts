@@ -10,7 +10,7 @@ import { handleGetChapters, handleGetChapter } from './controllers/chapters';
 import { handleSummarize } from './controllers/summary';
 import { handleGetAssetImage, handleGetStoryImage } from './controllers/assets';
 import { handleGetProgress, handleUpdateProgress } from './controllers/progress';
-import { handleAdminGetStories, handleAdminDeleteStory, handleAdminIngest } from './controllers/admin';
+import { handleAdminGetStories, handleAdminDeleteStory, handleAdminIngest, handleGetSeries } from './controllers/admin';
 import { upload } from './middleware/upload';
 import { getSeriesChapters } from './services/db';
 
@@ -48,6 +48,9 @@ router.get('/stories/:storyId/series-chapters', async (req, res) => {
 // Reading Progress (Phase 5)
 router.get('/stories/:storyId/progress', handleGetProgress);
 router.put('/stories/:storyId/progress', handleUpdateProgress);
+
+// Series
+router.get('/series', handleGetSeries);
 
 // Admin
 router.get('/admin/stories', handleAdminGetStories);

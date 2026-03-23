@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { spawn } from 'child_process';
 import { unlink, copyFile, mkdir } from 'fs/promises';
 import { resolve, basename } from 'path';
-import { getAdminStories, deleteStory, getSeriesTitleForStory, getStoryIdsBySeriesTitle } from '../services/admin';
+import { getAdminStories, deleteStory, getSeriesTitleForStory, getStoryIdsBySeriesTitle, getDistinctSeries } from '../services/admin';
 
 const uuidSchema = z.string().uuid();
 
@@ -21,6 +21,16 @@ function runPython(cwd: string, args: string[]): Promise<string> {
     proc.on('error', reject);
   });
 }
+
+export const handleGetSeries = async (_req: Request, res: Response) => {
+  try {
+    const series = await getDistinctSeries();
+    res.json(series);
+  } catch (error) {
+    console.error('Series list error:', error);
+    res.status(500).json({ error: 'Failed to fetch series' });
+  }
+};
 
 export const handleAdminGetStories = async (_req: Request, res: Response) => {
   try {
@@ -82,9 +92,10 @@ export const handleAdminIngest = async (req: Request, res: Response) => {
     const outputJson = resolve(projectRoot, 'processed', `${jsonStem}.json`);
 
     // Step 2: Load + tag images
-    const loadOutput = await runPython(projectRoot, [
-      'ingestion/load_to_db.py', outputJson, '--tag-images'
-    ]);
+    const seriesTitle = req.body?.seriesTitle as string | undefined;
+    const loadArgs = ['ingestion/load_to_db.py', outputJson, '--tag-images'];
+    if (seriesTitle) loadArgs.push('--series-title', seriesTitle);
+    const loadOutput = await runPython(projectRoot, loadArgs);
 
     // Extract story_id from load output
     const storyIdMatch = loadOutput.match(/Story\s+([0-9a-f-]{36})/i)

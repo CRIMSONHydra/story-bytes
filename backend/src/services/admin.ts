@@ -42,6 +42,26 @@ export const getSeriesTitleForStory = async (storyId: string): Promise<string | 
   return result.rows[0]?.series_title ?? null;
 };
 
+export interface SeriesInfo {
+  series_title: string;
+  story_count: number;
+  first_story_id: string;
+}
+
+export const getDistinctSeries = async (): Promise<SeriesInfo[]> => {
+  const result = await pool.query(`
+    SELECT
+      series_title,
+      COUNT(*)::int AS story_count,
+      MIN(story_id::text) AS first_story_id
+    FROM stories
+    WHERE series_title IS NOT NULL
+    GROUP BY series_title
+    ORDER BY series_title ASC
+  `);
+  return result.rows;
+};
+
 export const getStoryIdsBySeriesTitle = async (seriesTitle: string): Promise<string[]> => {
   const result = await pool.query(
     'SELECT story_id FROM stories WHERE series_title = $1',

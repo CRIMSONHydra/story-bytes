@@ -624,6 +624,89 @@ header {
   margin-top: 0.2em;
 }
 
+.series-select {
+  padding: 0.5em 0.8em;
+  border-radius: 8px;
+  background: #333;
+  color: white;
+  border: 1px solid #444;
+  font-size: 0.9em;
+  min-width: 180px;
+}
+
+.admin-series-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.admin-series-group {
+  background: #2a2a2a;
+  border-radius: 8px;
+  border: 1px solid #444;
+  overflow: hidden;
+}
+
+.admin-series-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.admin-series-header:hover {
+  background: #333;
+}
+
+.admin-series-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.expand-icon {
+  font-size: 0.7em;
+  color: #888;
+  width: 1em;
+}
+
+.admin-series-counts {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.8em;
+  color: #999;
+}
+
+.admin-series-volumes {
+  border-top: 1px solid #444;
+}
+
+.admin-volume-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem 0.5rem 2.5rem;
+  border-top: 1px solid #3a3a3a;
+  font-size: 0.9em;
+}
+
+.admin-vol-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-vol-stat {
+  color: #888;
+  font-size: 0.85em;
+  min-width: 5em;
+  text-align: right;
+}
+
 .delete-btn {
   background: #cc3333;
   color: white;
