@@ -5,8 +5,6 @@
 
 import cors from 'cors';
 import express from 'express';
-import { resolve } from 'path';
-import { existsSync } from 'fs';
 
 import { env } from './config/env';
 import { checkDatabase } from './db/pool';
@@ -61,18 +59,6 @@ export const createApp = () => {
       databaseUrlSet: Boolean(env.databaseUrl)
     });
   });
-
-  // In production, serve frontend static files
-  if (process.env.NODE_ENV === 'production') {
-    const frontendDist = resolve(__dirname, '..', '..', 'frontend', 'dist');
-    if (existsSync(frontendDist)) {
-      app.use(express.static(frontendDist));
-      // SPA catch-all: non-API routes serve index.html
-      app.get('/{*path}', (_req, res) => {
-        res.sendFile(resolve(frontendDist, 'index.html'));
-      });
-    }
-  }
 
   return app;
 };

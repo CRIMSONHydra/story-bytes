@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM node:20-alpine AS build
+FROM node:20-bullseye-slim AS build
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
@@ -17,19 +17,23 @@ RUN pnpm --filter backend build
 COPY frontend/ frontend/
 RUN pnpm --filter frontend build
 
-# Stage 2: Slim production runtime
-FROM node:20-alpine
-RUN apk add --no-cache python3 py3-pip py3-pillow tesseract-ocr postgresql-client
+# Stage 2: Production runtime
+FROM node:20-bullseye-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nginx supervisor wget \
+    python3 python3-pip python3-pil \
+    tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
-# Install production-only Node dependencies
+# Install production Node dependencies
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY backend/package.json backend/
 COPY frontend/package.json frontend/
 RUN pnpm install --frozen-lockfile --prod
 
-# Copy compiled backend JS
+# Copy compiled backend
 COPY --from=build /app/backend/dist backend/dist
 
 # Copy frontend static bundle
@@ -38,9 +42,20 @@ COPY --from=build /app/frontend/dist frontend/dist
 # Copy database schema and ingestion scripts
 COPY db/ db/
 COPY ingestion/ ingestion/
-RUN pip3 install --no-cache-dir --break-system-packages -r ingestion/requirements.txt
+RUN pip3 install --no-cache-dir -r ingestion/requirements.txt
+
+# Copy Docker configs
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/supervisor.conf /etc/supervisor/conf.d/supervisor.conf
+COPY docker/start.sh /start.sh
+
+# Remove default nginx site
+RUN rm -f /etc/nginx/sites-enabled/default
 
 VOLUME ["/app/dataset", "/app/processed"]
-EXPOSE 5001
-ENV NODE_ENV=production
-CMD ["node", "backend/dist/server.js"]
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+    CMD wget --no-verbose --tries=1 --spider http://localhost/api/health || exit 1
+
+ENTRYPOINT ["/start.sh"]

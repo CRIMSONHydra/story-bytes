@@ -2,7 +2,7 @@
 # Build Story Bytes.
 # Usage: ./build.sh [--dev]
 #   --dev   Install deps and compile TypeScript (no Docker)
-#   (default) Build Docker image
+#   (default) Build Docker images via docker compose
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -13,7 +13,7 @@ if [[ "${1:-}" == "--dev" ]]; then
   pnpm build
   echo "Dev build complete."
 else
-  echo "Building Docker image..."
-  docker build -t story-bytes .
-  echo "Docker image 'story-bytes' built successfully."
+  echo "Building Docker images..."
+  docker compose build
+  echo "Docker images built successfully."
 fi

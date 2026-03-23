@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Run Story Bytes.
 # Usage: ./run.sh [--dev]
-#   --dev   Run backend + frontend dev servers with hot reload
-#   (default) Run Docker container
+#   --dev   Run backend + frontend dev servers with hot reload (uses local DB)
+#   (default) Run via docker compose (app + DB containers, port 80)
 
 cd "$(dirname "$0")"
 
@@ -17,16 +17,6 @@ if [[ "${1:-}" == "--dev" ]]; then
 
   wait
 else
-  if ! docker image inspect story-bytes >/dev/null 2>&1; then
-    echo "Docker image not found. Run ./build.sh first."
-    exit 1
-  fi
-
-  echo "Starting Story Bytes (http://localhost:5001)..."
-  docker run --rm -it \
-    --env-file .env \
-    -p 5001:5001 \
-    -v "$(pwd)/dataset:/app/dataset" \
-    -v "$(pwd)/processed:/app/processed" \
-    story-bytes
+  echo "Starting Story Bytes (http://localhost)..."
+  docker compose up
 fi
