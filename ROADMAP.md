@@ -361,6 +361,18 @@ Modify the system prompt in `backend/src/services/rag.ts` to handle foreshadowin
 
 ---
 
+## Phase 7+: Improvement Plan (spoiler-safe recap, incremental ingestion, theories, knowledge graph, image generation)
+
+The next major body of work — self-serve incremental ingestion, spoiler-safe RAG hardening + a catch-up/recap
+experience, a chapter-versioned knowledge graph, on-demand image generation, internet-theory external knowledge, and
+the platform/quality foundation to support them — is planned in detail in **[`docs/IMPROVEMENT_PLAN.md`](docs/IMPROVEMENT_PLAN.md)**.
+
+That document is the authoritative, dependency-ordered execution plan (milestones M1–M19 + Recap + Backfill), and it
+reconciles the ~12 cross-pillar conflicts (one migration scheme, one entity table, one job queue, one extraction pass,
+one external-knowledge subsystem, one usage table). The full underlying pillar designs and subsystem maps are in
+[`docs/improvement-plan/pillar-designs-and-maps.md`](docs/improvement-plan/pillar-designs-and-maps.md). Start with the
+"walking skeleton" (M1–M10b) which delivers the catch-up experience without the four heavy feature pillars.
+
 ## Phase Dependencies
 
 ```
@@ -373,6 +385,8 @@ Phase 1 (Fix embeddings)
   +---> Phase 5 (Frontend) <-------------/--------/
           |
           +---> Phase 6 (Advanced features)
+          |
+          +---> Phase 7+ (Improvement Plan — see docs/IMPROVEMENT_PLAN.md)
 ```
 
 ## Key Decisions
