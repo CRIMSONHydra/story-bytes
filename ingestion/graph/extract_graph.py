@@ -26,11 +26,9 @@ from dotenv import load_dotenv
 # Allow running both as a module (uv run -m) and as a bare script.
 try:
     from . import prompts, writer
-    from .merge import EntityIndex
 except ImportError:  # pragma: no cover - script execution fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from graph import prompts, writer  # type: ignore
-    from graph.merge import EntityIndex  # type: ignore
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", stream=sys.stderr)
@@ -85,20 +83,24 @@ def _retry(fn, description: str, max_retries: int = 3, base_delay: float = 5.0):
             time.sleep(delay)
 
 
-def build_digest(index: EntityIndex, cursor, story_id: str, max_entities: int = 150) -> str:
-    """A compact list of already-known entities to seed the chapter prompt."""
+def build_digest(cursor, story_id: str, order: int, max_entities: int = 150) -> str:
+    """A compact list of already-known entities to seed the chapter prompt.
+
+    Bounded to entities first seen in EARLIER chapters (first_chapter_order < order) so a
+    resume/reprocess run can never seed an earlier chapter with later-chapter entities.
+    """
     cursor.execute(
         """
         SELECT e.canonical_name, e.entity_type,
                COALESCE(array_agg(DISTINCT a.alias) FILTER (WHERE a.alias IS NOT NULL), '{}')
         FROM kg_entities e
         LEFT JOIN kg_entity_aliases a ON a.entity_id = e.entity_id
-        WHERE e.story_id = %s
+        WHERE e.story_id = %s AND e.first_chapter_order < %s
         GROUP BY e.canonical_name, e.entity_type
         ORDER BY e.canonical_name
         LIMIT %s
         """,
-        (story_id, max_entities),
+        (story_id, order, max_entities),
     )
     lines = []
     for name, etype, aliases in cursor.fetchall():
@@ -229,7 +231,7 @@ def extract_story(story_id: str, client: genai.Client, from_chapter: int = 0, re
                 if not rebuild and writer.run_already_succeeded(cur, story_id, order, "graph", prompts.PROMPT_VERSION):
                     totals["skipped"] += 1
                     continue
-                digest = build_digest(EntityIndex(), cur, story_id)
+                digest = build_digest(cur, story_id, order)
             try:
                 data = extract_chapter(client, title or f"Chapter {order}", order, digest, text)
                 if data is None:

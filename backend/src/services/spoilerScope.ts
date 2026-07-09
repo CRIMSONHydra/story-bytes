@@ -26,10 +26,10 @@ export interface SpoilerScope {
 /**
  * Resolve the spoiler boundary for a reader.
  * @param storyId the current volume
- * @param requestedChapter explicit boundary from the client (optional)
+ * @param requestedChapter explicit boundary from the client (optional). When provided and
+ *   non-negative it is used directly as the boundary — the deliberate "peek ahead" path. When
+ *   absent, resolution falls back to reading_progress.last_chapter_order, then 0 (default-deny).
  * @param userId reader identity (falls back to the default single-user id)
- * @param peekAhead when true, an explicit requestedChapter is honored even if it exceeds progress
- *   (the deliberate "peek ahead" opt-in); otherwise the resolved boundary is the max of request and 0.
  */
 export const resolveSpoilerScope = async (
   storyId: string,

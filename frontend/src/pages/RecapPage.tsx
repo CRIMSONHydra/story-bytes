@@ -114,8 +114,10 @@ export default function RecapPage() {
   const error = errState?.key === requestKey ? errState.message : null;
   const loading = !recap && !error;
 
-  const asOfChapter = recap?.upToChapter ?? (upTo ? Number(upTo) : undefined);
-  const continueChapter = recap?.upToChapter ?? (upTo ? Number(upTo) : 0);
+  const upToNum = upTo ? Number(upTo) : NaN;
+  const upToValid = Number.isFinite(upToNum);
+  const asOfChapter = recap?.upToChapter ?? (upToValid ? upToNum : undefined);
+  const continueChapter = recap?.upToChapter ?? (upToValid ? upToNum : 0);
   const readerPath = `/story/${storyId}/chapter/${continueChapter || 0}`;
 
   const storySoFar = recap?.storySoFar?.trim();

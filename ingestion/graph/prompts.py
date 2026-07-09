@@ -89,6 +89,8 @@ Return a JSON object: {"links": [ ... ]} where each link is:
     spoiler; it will be stored but never shown to a reader who has not reached the payoff chapter)
   - "significance": "minor","notable", or "major" — how important the payoff is to the story
   - "confidence": 0.0-1.0, how confident you are this is genuine foreshadowing (not a coincidence)
+  - "thread": the exact plot-thread name (from the beats above) this foreshadowing belongs to, or null
+    if it spans no single named thread
 
 Be conservative: only report links you are reasonably confident are intentional foreshadowing.
 Prefer fewer, high-quality links. Return {"links": []} if none."""
