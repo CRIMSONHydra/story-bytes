@@ -688,3 +688,40 @@ M10 (+ text Recap) → M10b**. This is the product's headline user story and nee
 proves it, and it de-risks the whole Foundation spine under real feature pressure. RAG is synchronous, so M8→M10b run
 largely in parallel with Platform M5/M6. Image, Internet, KG, and full incremental Ingestion are strictly additive
 afterward.
+
+---
+
+## 11. Model selection & pricing (evaluated 2026-07, verify at implementation time)
+
+The app uses `gemini-2.5-flash` (chat/summarize/extraction/enrich/judge), `gemini-2.5-flash-lite`
+(answer-guard, `generateJson` default), and `gemini-embedding-001` (768-dim). Verified pricing from
+[ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-api/docs/pricing):
+
+| Model | $/1M in | $/1M out | vs. what we use |
+|---|---|---|---|
+| `gemini-2.5-flash` (current main) | 0.30 | 2.50 | baseline |
+| `gemini-2.5-flash-lite` (current lite) | 0.10 | 0.40 | baseline |
+| `gemini-embedding-001` (current) | 0.15 | — | baseline |
+| `gemini-3.5-flash` | 1.50 | 9.00 | ~5× / 3.6× pricier |
+| `gemini-3.1-flash-lite` | 0.25 | 1.50 | cheaper than 2.5-flash on output; ~2.5× the 2.5-flash-lite |
+| `gemini-3.1-pro-preview` | 2.00 | 12.00 | premium |
+| `gemini-embedding-2` | 0.20 | — | +$0.05/1M, newer |
+| `gemini-2.0-flash` | — | — | **shut down 2026-06-01 (unused here)** |
+
+**Finding:** there is **no free like-for-like upgrade** — the Gemini 3.x text tier costs 2–5× the
+2.5 tier we run. So the recommendation is:
+
+1. **Keep the 2.5 tier as the cost-effective default.** It is active and cheapest.
+2. **Centralize model IDs** (currently scattered: `backend/src/services/llm.ts`,
+   `ingestion/graph/prompts.py` `GRAPH_MODEL`, `ingestion/graph/guard.py` `GUARD_MODEL`,
+   `eval/judge.py` `JUDGE_MODEL`) into one config per language (`backend/src/config/models.ts`,
+   `ingestion/models.py`) so a swap is a one-line, eval-gated change. **This is the actionable item.**
+3. **Optional, eval-gated upgrades** (measure with the M7 harness before switching):
+   `gemini-3.1-flash-lite` for the main tier (better model, cheaper output than 2.5-flash, but pricier
+   than 2.5-flash-lite for the guard/judge lite work — so cost impact is mixed); `gemini-embedding-2`
+   (+$0.05/1M) folded into the M9 D6 re-embed if we want the newest embeddings (requires the same
+   backfill + tag cutover already built).
+4. Image generation already targets the current Nano-Banana tier (image-gen pillar, §M16/M17).
+
+Non-goal: chasing the newest model for its own name — the eval harness (spoiler-leak + answer
+quality) is the gate for any model change, since a pricier model must earn its cost.

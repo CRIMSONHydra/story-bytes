@@ -234,6 +234,33 @@ def upsert_asset_with_tags(
     return asset_id
 
 
+def split_into_chunks(text: str, max_chars: int = 1600, target_chars: int = 1200) -> List[str]:
+    """Split an over-long text block on paragraph boundaries into ~target_chars sub-chunks with a
+    one-paragraph overlap (plan §3.2.6, M9 D6). Blocks <= max_chars are returned unchanged. This
+    fixes the "whole image-free chapter embeds as one giant vector" granularity problem; display is
+    unaffected (the reader just renders more, smaller text blocks). A single paragraph longer than
+    target_chars is kept whole (never split mid-paragraph)."""
+    import re
+    if not text or len(text) <= max_chars:
+        return [text]
+    paras = [p for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if len(paras) <= 1:
+        return [text]
+    chunks: List[str] = []
+    cur: List[str] = []
+    cur_len = 0
+    for p in paras:
+        if cur and cur_len + len(p) > target_chars:
+            chunks.append("\n\n".join(cur))
+            cur = [cur[-1]]          # 1-paragraph overlap into the next chunk
+            cur_len = len(cur[0])
+        cur.append(p)
+        cur_len += len(p)
+    if cur:
+        chunks.append("\n\n".join(cur))
+    return chunks
+
+
 def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], client: genai.Client | None, tag_images: bool = False):
     """Insert chapters and blocks, generating embeddings via Gemini API."""
     chapter_count = len(chapters)
@@ -276,11 +303,29 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
         )
         chapter_id = cursor.fetchone()[0]
 
-        for idx, block in enumerate(blocks):
+        block_index = 0
+        for block in blocks:
             block_type = block.get("type")
-            text_content = block.get("text")
             image_src = block.get("src")
             image_alt = block.get("alt")
+
+            if block_type == 'text':
+                # Over-long text blocks are split into ~1200-char sub-blocks so retrieval is not
+                # coarse-grained (M9 D6). Each sub-block is embedded independently.
+                for chunk in split_into_chunks(block.get("text") or ""):
+                    cursor.execute(
+                        """
+                        INSERT INTO chapter_blocks (chapter_id, block_index, block_type, text_content, image_src, image_alt)
+                        VALUES (%s, %s, 'text', %s, NULL, NULL)
+                        RETURNING block_id
+                        """,
+                        (chapter_id, block_index, chunk),
+                    )
+                    block_id = cursor.fetchone()[0]
+                    block_index += 1
+                    if chunk and len(chunk.strip()) > 10:
+                        pending_embeddings.append({"block_id": block_id, "text": chunk})
+                continue
 
             cursor.execute(
                 """
@@ -288,19 +333,10 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
                 VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING block_id
                 """,
-                (
-                    chapter_id,
-                    idx,
-                    block_type,
-                    text_content,
-                    image_src,
-                    image_alt
-                )
+                (chapter_id, block_index, block_type, block.get("text"), image_src, image_alt),
             )
             block_id = cursor.fetchone()[0]
-
-            if block_type == 'text' and text_content and len(text_content.strip()) > 10:
-                pending_embeddings.append({"block_id": block_id, "text": text_content})
+            block_index += 1
 
             if tag_images and block_type == 'image' and image_src and client:
                 image_path = _resolve_image_path(image_src)

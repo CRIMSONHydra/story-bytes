@@ -4,6 +4,7 @@
  */
 
 import { pool } from '../db/pool';
+import { EMBEDDING_MODEL_TAG } from './llm';
 
 /**
  * Represents a text block with similarity score from vector search.
@@ -75,7 +76,7 @@ export const findSimilarBlocks = async (
       JOIN chapters c ON cb.chapter_id = c.chapter_id
       JOIN stories s ON c.story_id = s.story_id
       WHERE
-        be.model = 'gemini-embedding-001'
+        be.model = '${EMBEDDING_MODEL_TAG}'
         AND (
           (c.story_id = ANY($2::uuid[]) AND c.story_id != $3)
           OR (c.story_id = $3 AND ($4::int IS NULL OR c.chapter_order <= $4))
@@ -110,7 +111,7 @@ export const findSimilarBlocks = async (
     JOIN chapter_blocks cb ON be.block_id = cb.block_id
     JOIN chapters c ON cb.chapter_id = c.chapter_id
     WHERE
-      be.model = 'gemini-embedding-001'
+      be.model = '${EMBEDDING_MODEL_TAG}'
       AND ($2::uuid IS NULL OR c.story_id = $2)
       AND ($3::int IS NULL OR c.chapter_order <= $3)
     ORDER BY be.vector <=> $1 ASC

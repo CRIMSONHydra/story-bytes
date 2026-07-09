@@ -98,17 +98,34 @@ const parseJsonResponse = (text: string): Record<string, unknown> | null => {
  */
 export const EMBEDDING_MODEL = 'gemini-embedding-001';
 
-export const generateEmbedding = async (text: string): Promise<number[]> => {
+/**
+ * The embedding "model tag" retrieval matches on (block_embeddings.model). Task-typed document
+ * embeddings are stored under a distinct tag (e.g. 'gemini-embedding-001/rd-768') so they can
+ * coexist with legacy untyped vectors; flip EMBEDDING_MODEL_TAG to cut retrieval over once the
+ * backfill completes (clean rollback — plan §3.2.6, M9 D6).
+ */
+export const EMBEDDING_MODEL_TAG = process.env.EMBEDDING_MODEL_TAG || 'gemini-embedding-001';
+
+export type EmbeddingTaskType = 'RETRIEVAL_QUERY' | 'RETRIEVAL_DOCUMENT';
+
+/**
+ * Generate a 768-dim embedding. Queries should pass 'RETRIEVAL_QUERY' and stored documents
+ * 'RETRIEVAL_DOCUMENT'; task-typed vectors retrieve better but are not comparable with untyped ones.
+ */
+export const generateEmbedding = async (
+  text: string,
+  taskType?: EmbeddingTaskType,
+): Promise<number[]> => {
   const response = await genAIModels().embedContent({
     model: EMBEDDING_MODEL,
     contents: text,
-    config: { outputDimensionality: 768 },
+    config: { outputDimensionality: 768, ...(taskType ? { taskType } : {}) },
   });
-  
+
   // Validate response structure
   if (!response.embeddings || !response.embeddings[0] || !response.embeddings[0].values) {
     throw new Error('Failed to generate embedding: invalid response structure');
   }
-  
+
   return response.embeddings[0].values;
 };
