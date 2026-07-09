@@ -121,7 +121,7 @@ Skip:
 - Conversational comments without a concrete suggestion ("nice work!", "what do you think?").
 - Comments inside a **resolved** or **outdated** review thread. In Mode B this is already filtered at fetch time via the GraphQL `isResolved` / `isOutdated` predicates above; in Mode A the user is expected to omit them from the paste.
 
-## Step 2 — Detect branch-intent flags (CRITICAL — same guardrail as merge-conflict-resolver)
+## Step 2 — Detect branch-intent flags (CRITICAL)
 
 For each `{file, line}`, read a window around the line (±10 lines) and check for intentional deviations:
 
@@ -217,9 +217,12 @@ Record the **final outcome** for every comment — `{comment_databaseId, outcome
 Run project checks before posting any "Applied" replies so replies reflect verified state.
 
 ```bash
-# After all fixes are decided/applied
-(cd frontend && pnpm type-check && pnpm lint)
-(cd backend && uv run mypy app && ../scripts/lint.sh)
+# After all fixes are decided/applied (story-bytes tooling)
+pnpm --filter backend build        # tsc type-check
+pnpm --filter frontend build       # tsc -b + vite build
+pnpm lint                          # eslint (backend + frontend), zero-warnings
+pnpm --filter backend test         # vitest
+uv run pytest ingestion/tests/     # only if Python files were touched
 ```
 
 If verification fails for a **SAFE** auto-apply, do NOT post an `Applied: …` reply — instead post exactly one failure-reply per affected comment using the `safe-applied (verification failed)` template (see Step 7). The attempted edits remain in the working tree so the developer can inspect and patch them manually; no automatic rollback. Surface the type-check failure details in the final report as well.

@@ -20,8 +20,17 @@
 set -u
 TRANSCRIPT="${1:?usage: $0 <transcript-path>}"
 
-# Wait for the file to exist (the agent process creates it after spawn).
-while [ ! -e "$TRANSCRIPT" ]; do sleep 0.5; done
+# Wait (bounded) for the file to exist (the agent process creates it after spawn).
+# If the agent fails before creating the transcript, don't hang forever — time out and surface it.
+_waited=0
+while [ ! -e "$TRANSCRIPT" ]; do
+  sleep 0.5
+  _waited=$((_waited + 1))
+  if [ "$_waited" -ge 120 ]; then   # ~60s
+    echo "⚠️ transcript $TRANSCRIPT never appeared after 60s — agent may have failed to start" >&2
+    exit 1
+  fi
+done
 
 # Follow the file, parse each new JSON line, emit a short one-liner.
 python3 -u - "$TRANSCRIPT" <<'PYEOF'

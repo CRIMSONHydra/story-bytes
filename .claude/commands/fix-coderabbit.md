@@ -14,7 +14,7 @@ You are about to run the **/fix-coderabbit** workflow.
 
 ## Step 2 — Group by target file, dispatch in parallel (backgrounded)
 
-> **Scope baseline note:** this dispatcher takes its scope from CR's PR-diff (GitHub-side, against `origin/main`) — NOT from a local `git diff`. It is unaffected by the local-baseline scoping policy in [`qa.md`](qa.md) / [`audit-feature.md`](audit-feature.md). See [`~/.claude/plans/when-we-merge-main-hidden-liskov.md`](../../.claude/plans/when-we-merge-main-hidden-liskov.md) for the full picture.
+> **Scope baseline note:** this dispatcher takes its scope from CodeRabbit's PR-diff (GitHub-side, against the PR base branch) — NOT from a local `git diff`.
 
 ### Step 2.0 — Mode B: pull both layers of CR comments
 
