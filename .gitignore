@@ -41,3 +41,6 @@ dataset
 
 # Claude Code per-user local settings
 .claude/settings.local.json
+
+# Generated eval reports
+eval/reports/*.json

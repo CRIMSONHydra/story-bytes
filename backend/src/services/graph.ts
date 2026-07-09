@@ -127,7 +127,16 @@ export const getLastEvent = async (
 };
 
 /**
- * Live foreshadowing links for a reader at the boundary: setup already read, payoff still ahead.
+ * Minimum narrative gap (chapters) between a setup and its payoff for the link to be surfaced.
+ * Adjacent-chapter "links" are usually just plot progression, not genuine foreshadowing, and
+ * flagging them risks telegraphing the payoff (an obvious next-chapter consequence). Genuine
+ * foreshadowing spans distance. See docs/IMPROVEMENT_PLAN.md §2.14.5 (meta-spoiler control).
+ */
+export const MIN_FORESHADOW_GAP = 2;
+
+/**
+ * Live foreshadowing links for a reader at the boundary: setup already read, payoff still ahead
+ * by at least MIN_FORESHADOW_GAP chapters.
  *
  * SELECTS ONLY setup + hint. payoff_summary is intentionally never in the projection. Ranked by
  * significance (major > notable > minor) then recency, capped — but significance is not returned.
@@ -144,12 +153,13 @@ export const getForeshadowLinks = async (
     WHERE story_id = $1
       AND setup_chapter_order <= $2
       AND payoff_chapter_order > $2
+      AND payoff_chapter_order - setup_chapter_order >= $4
     ORDER BY
       CASE significance WHEN 'major' THEN 0 WHEN 'notable' THEN 1 ELSE 2 END,
       setup_chapter_order DESC
     LIMIT $3
     `,
-    [storyId, maxChapterOrder, limit],
+    [storyId, maxChapterOrder, limit, MIN_FORESHADOW_GAP],
   );
   return result.rows.map((r: {
     setup_chapter_order: number; setup_summary: string; emphasis_hint: string;
@@ -172,8 +182,9 @@ export const getLivePayoffSummaries = async (
   const result = await pool.query(
     `SELECT payoff_summary FROM kg_foreshadow_links
      WHERE story_id = $1 AND setup_chapter_order <= $2 AND payoff_chapter_order > $2
+       AND payoff_chapter_order - setup_chapter_order >= $4
      LIMIT $3`,
-    [storyId, maxChapterOrder, limit],
+    [storyId, maxChapterOrder, limit, MIN_FORESHADOW_GAP],
   );
   return result.rows.map((r: { payoff_summary: string }) => r.payoff_summary);
 };

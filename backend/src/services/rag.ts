@@ -8,7 +8,6 @@ import { getModel, generateEmbedding } from './llm';
 import {
   findSimilarBlocks,
   findSimilarExternalKnowledge,
-  insertExternalKnowledge,
   findRelevantImages,
   findBlocksByKeyword,
   getChapterTexts,
@@ -17,7 +16,6 @@ import {
   getStoriesInSeries,
   getImagesFromChapters,
 } from './db';
-import { searchWeb } from './search';
 import { getForeshadowLinks, getLivePayoffSummaries } from './graph';
 import { checkPayoffLeak } from './answerGuard';
 
@@ -82,22 +80,23 @@ RULES:
 1. The user is looking for foreshadowing, hints, and setup in what they've read so far.
 2. ONLY reference patterns and details that ACTUALLY APPEAR in the provided STORY CONTEXT. Do not fabricate foreshadowing.
 3. Examine the provided context for recurring symbols, oddly specific statements, and unexplained events.
-4. Use hedging language: "This could be setting up...", "The author may be hinting at...", "It's interesting that..."
-5. NEVER confirm actual future plot points, even if you know them from training data.
-6. If you cannot find relevant patterns in the context, say so — do NOT invent observations.
-7. Point out patterns the reader might have missed, citing the specific chapter.`;
+4. Point out a detail and say it is worth keeping in mind — but do NOT say what it "leads to", "sets up", "results in", or "means later". Flag the detail; never resolve it.
+5. NEVER confirm, state, or speculatively infer any future plot point — treat this story as an unpublished manuscript you have never seen. Use ONLY the STORY CONTEXT; ignore any knowledge of this story from your training data.
+6. NEVER mention, name, or quote a chapter, chapter title, event, or character the reader has not reached (only chapters up to Chapter ${currentChapter ?? 'the current one'} exist for this purpose). Do NOT reference a "Table of Contents" or list upcoming chapters.
+7. Prefer the FORESHADOWING SEEDS section (if present): those setups + hints are pre-vetted safe. Present them; do not extrapolate past them.
+8. If you cannot find relevant patterns in the context, say so — do NOT invent observations.`;
 
     case 'theory':
       return `${base}
 
 RULES:
 1. The user is asking about theories, speculation, or external knowledge about this story.
-2. BASE your answer primarily on the EXTERNAL KNOWLEDGE section (web search results, wiki entries, fan discussions).
-3. Clearly attribute sources: "According to fans on Reddit...", "The wiki suggests...", "A popular theory is..."
-4. You may be creative and speculative — this is the place for wild theorizing and connecting dots.
-5. DO NOT reveal confirmed spoilers beyond the current chapter as fact. Frame future-touching content as fan speculation.
-6. If discussing theories, weave in evidence from the STORY CONTEXT that supports or contradicts them.
-7. If no external knowledge is available, offer your own analysis framed as speculation.`;
+2. Treat this story as an unpublished manuscript you have never seen. Use ONLY the STORY CONTEXT (chapters the reader has read) and the EXTERNAL KNOWLEDGE section below. Do NOT use, cite, or paraphrase any knowledge of this story from your training data.
+3. Base theories on the EXTERNAL KNOWLEDGE section and attribute ONLY sources that actually appear there. NEVER invent, name, or attribute a source (wiki, Reddit, fan forum) that is not present in EXTERNAL KNOWLEDGE. Fabricated citations are a serious error.
+4. If the EXTERNAL KNOWLEDGE section is empty or "None": say plainly that there are no fan theories or external sources for this story yet. You may then offer speculation grounded ONLY in evidence from the STORY CONTEXT — do NOT introduce characters, identities, roles, events, or outcomes that do not appear in that context.
+5. NEVER state or confirm a future plot point, a character's true identity or ultimate role, or an outcome — even framed as "a theory" or "fans speculate" — unless it is explicitly present in the EXTERNAL KNOWLEDGE section. If it is not in the provided material, you do not know it.
+6. Do NOT mention, name, or quote a chapter, chapter title, event, or character the reader has not reached.
+7. When you do speculate, weave in supporting or contradicting evidence from the STORY CONTEXT and keep it clearly hedged.`;
 
     default: // recall
       return `${base}
@@ -190,33 +189,17 @@ export const answerQuery = async (
 
     let externalContext = '';
 
-    // Step 4: External Knowledge (Smart Search)
+    // Step 4: External knowledge — classified sources only.
+    // Improvement Plan §3.6 (interim safety): live web-search (Google CSE) snippets are NO LONGER
+    // injected into the prompt, and the old "store the raw search result as knowledge" write path is
+    // removed. Raw, unclassified web results are the top spoiler-leak vector — for a popular series a
+    // search for "who is X" returns "X is the main antagonist" straight into the answer. Until the
+    // Theories pillar (M18) adds spoiler-classification of external content, theory mode uses only
+    // already-classified external_knowledge rows plus the reader's own (chapter-bounded) story context.
     if (requiresExternalKnowledge(query, effectiveMode) && storyId) {
       const knownFacts = await findSimilarExternalKnowledge(embedding, storyId);
-
       if (knownFacts.length > 0) {
         externalContext += '\n\nExisting Knowledge:\n' + knownFacts.map(k => `- ${k.content}`).join('\n');
-      }
-
-      console.log('Triggering web search for:', query);
-      const [wikiResults, redditResults] = await Promise.all([
-        searchWeb(query + ' site:fandom.com OR site:wiki', 3),
-        searchWeb(query + ' site:reddit.com discussion theory', 3),
-      ]);
-      const searchResults = [...wikiResults, ...redditResults];
-
-      if (searchResults.length > 0) {
-        const searchSummary = searchResults.slice(0, 3).map(r => `${r.title}: ${r.snippet}`).join('\n');
-        externalContext += `\n\nWeb Search Results:\n${searchSummary}`;
-
-        const topResult = searchResults[0];
-        void insertExternalKnowledge(
-          storyId,
-          `Search Result for "${query}": ${topResult.title} - ${topResult.snippet}`,
-          topResult.link,
-          'theory',
-          embedding
-        ).catch(err => console.error('Failed to save external knowledge:', err));
       }
     }
 

@@ -36,14 +36,15 @@ describe('graph service — foreshadowing spoiler safety', () => {
     const links = await getForeshadowLinks('story-1', 12);
 
     const sql = mockQuery.mock.calls[0][0] as string;
-    // The emphasizability window: setup already read, payoff still ahead.
+    // The emphasizability window: setup already read, payoff still ahead by a minimum gap.
     expect(sql).toContain('setup_chapter_order <= $2');
     expect(sql).toContain('payoff_chapter_order > $2');
+    expect(sql).toContain('payoff_chapter_order - setup_chapter_order >= $4');
     // CRITICAL: the reader-facing projection must never include the payoff column.
     expect(sql).not.toContain('payoff_summary');
     // Significance is used for ordering but not returned (magnitude is gatekept).
     expect(sql).toContain('significance');
-    expect(mockQuery.mock.calls[0][1]).toEqual(['story-1', 12, 5]);
+    expect(mockQuery.mock.calls[0][1]).toEqual(['story-1', 12, 5, 2]);
 
     expect(links).toEqual([
       { setupChapter: 6, setupSummary: 'A locked cellar door.', hint: 'An odd detail, easy to overlook.' },

@@ -341,6 +341,31 @@ That is the *intended* feature, but it must be calibrated so it stays "subtle em
 - Meta-spoiler: with the lens **off**, recap output is byte-identical to the non-foreshadowing recap; with it on,
   surfaced phrasing does not vary by stored `significance` at the default intensity.
 
+#### 2.14.8 Eval-driven hardening (findings from the M7 harness, implemented)
+
+The M7 spoiler-leak eval (`eval/`, §10-adjacent) exercises the live API with data-driven foreshadow probes (from
+`kg_foreshadow_links`) + adversarial training-data probes, graded by an LLM judge. Building it surfaced four real
+leak classes that unit tests and the runtime guard missed — all now fixed and re-verified at **0/13 leaks**:
+
+1. **Foreshadowing chat volunteered a future chapter title** from training data and inferred the payoff. Fix: the
+   foreshadowing system prompt now forbids naming any chapter/title/event past the reader, forbids saying what a setup
+   "leads to" (flag it, don't resolve it), and forbids training-data use.
+2. **Theory mode fabricated "wiki/Reddit" citations** and stated later-series facts when no real sources existed
+   (the obscure-story cold-start case). Fix: theory prompt forbids inventing/attributing absent sources and
+   training-data plot; when EXTERNAL KNOWLEDGE is empty it says so.
+3. **Theory mode injected raw, unclassified Google-CSE snippets** into the prompt — the plan's own #1 leak vector
+   (§3.6). Interim fix applied now: CSE-into-prompt path removed and the junk `insertExternalKnowledge` write-path
+   deleted (it was storing spoilers as "knowledge"). The real fix remains the Theories pillar (M18) — spoiler-classified
+   external content. Theory mode is spoiler-safe-but-thin until then.
+4. **A weak adjacent-chapter foreshadow link telegraphed its payoff.** Fix: `MIN_FORESHADOW_GAP = 2` (kept in sync in
+   `backend/src/services/graph.ts` and `ingestion/graph/link_foreshadow.py`) — genuine foreshadowing must span
+   distance; adjacent "links" are plot progression, not foreshadowing.
+
+**Residual risk (documented, not hidden):** the foreshadowing *chat* surface is free-generation and shows occasional
+temp-0 variance on borderline inferences; the **recap** foreshadowing surface (pre-vetted setup + hint, no generation)
+is structurally 0-leak across every run and is the recommended path. The eval harness exits non-zero on any leak, so it
+is usable as a CI gate (nightly, per §3.6).
+
 ---
 
 ## 3. What's broken today (verified first-hand, must be fixed early)

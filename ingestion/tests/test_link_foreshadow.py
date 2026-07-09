@@ -36,6 +36,15 @@ class TestBuildLinkValidation:
         monkeypatch.setattr(lf.guard, "check_payoff_leak", lambda c, h, p: False)
         assert lf.build_link(client, {"setup_chapter": "x", "payoff_chapter": 4, "setup_summary": "s", "payoff_summary": "p"}) is None
 
+    def test_rejects_gap_below_minimum(self, client, monkeypatch):
+        # Adjacent chapters (gap 1) are not genuine foreshadowing — rejected.
+        monkeypatch.setattr(lf, "generate_hint", lambda c, s: "hint")
+        monkeypatch.setattr(lf.guard, "check_payoff_leak", lambda c, h, p: False)
+        assert lf.MIN_FORESHADOW_GAP == 2
+        assert lf.build_link(client, {"setup_chapter": 5, "payoff_chapter": 6, "setup_summary": "s", "payoff_summary": "p"}) is None
+        # Gap == MIN_FORESHADOW_GAP is accepted.
+        assert lf.build_link(client, {"setup_chapter": 5, "payoff_chapter": 7, "setup_summary": "s", "payoff_summary": "p"}) is not None
+
 
 class TestBuildLinkGuardFlow:
     RAW = {"setup_chapter": 6, "payoff_chapter": 40, "setup_summary": "A locked door in the cellar.",

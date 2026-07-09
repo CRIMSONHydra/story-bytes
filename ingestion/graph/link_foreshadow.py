@@ -48,6 +48,10 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 CALL_DELAY = 1.5
 GENERIC_HINT = "This detail recurs later — worth keeping in mind."
+# Minimum setup->payoff chapter gap. Adjacent "links" are usually plot progression, not genuine
+# foreshadowing, and flagging them telegraphs an obvious next-chapter consequence. Keep in sync with
+# MIN_FORESHADOW_GAP in backend/src/services/graph.ts. See IMPROVEMENT_PLAN.md §2.14.5.
+MIN_FORESHADOW_GAP = 2
 
 
 def get_db_connection():
@@ -113,7 +117,7 @@ def build_link(client: genai.Client, raw: Dict[str, Any]) -> Optional[Dict[str, 
         payoff_ch = int(raw["payoff_chapter"])
     except (KeyError, TypeError, ValueError):
         return None
-    if payoff_ch <= setup_ch:
+    if payoff_ch - setup_ch < MIN_FORESHADOW_GAP:
         return None
     setup_summary = (raw.get("setup_summary") or "").strip()
     payoff_summary = (raw.get("payoff_summary") or "").strip()
