@@ -96,11 +96,36 @@ def get_db_connection():
 
 
 def get_story_characters(cursor, story_id: str) -> List[str]:
-    """Extract a rough character list from aggregated chapter text.
+    """Return the story's character names.
 
-    Uses a simple heuristic: find capitalized multi-word names that appear
-    frequently. In production, you'd maintain a proper characters table.
+    Prefers the extracted knowledge graph (kg_entities) — the canonical character list with
+    aliases — and falls back to the capitalized-name frequency heuristic only when the story has
+    no graph yet (M15: this replaces the old regex-only approach).
     """
+    try:
+        cursor.execute(
+            """
+            SELECT e.canonical_name,
+                   COALESCE(array_agg(DISTINCT a.alias) FILTER (WHERE a.alias IS NOT NULL), '{}')
+            FROM kg_entities e
+            LEFT JOIN kg_entity_aliases a ON a.entity_id = e.entity_id
+            WHERE e.story_id = %s AND e.entity_type = 'character'
+            GROUP BY e.canonical_name
+            ORDER BY e.canonical_name
+            """,
+            (story_id,),
+        )
+        rows = cursor.fetchall()
+        if rows:
+            names: List[str] = []
+            for canonical, aliases in rows:
+                names.append(canonical)
+                names.extend(a for a in (aliases or []) if a)
+            return names[:100]
+    except Exception as e:  # noqa: BLE001 - kg tables may be absent on very old DBs; fall back.
+        logging.warning(f"kg_entities lookup failed ({e}); falling back to name heuristic.")
+
+    # Fallback heuristic: frequent capitalized multi-word names from the text.
     cursor.execute(
         "SELECT aggregated_text FROM chapters WHERE story_id = %s ORDER BY chapter_order",
         (story_id,),

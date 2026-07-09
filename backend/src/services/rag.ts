@@ -16,7 +16,10 @@ import {
   getStoriesInSeries,
   getImagesFromChapters,
 } from './db';
-import { getForeshadowLinks, getLivePayoffSummaries } from './graph';
+import {
+  getForeshadowLinks, getLivePayoffSummaries, linkEntities, getEgoNetwork, getOpenThreads,
+  type GraphEntity, type NamedEdge,
+} from './graph';
 import { checkPayoffLeak } from './answerGuard';
 import { resolveSpoilerScope, DEFAULT_USER_ID } from './spoilerScope';
 
@@ -112,6 +115,29 @@ RULES:
 };
 
 /**
+ * Format linked entities + their ego-network into a compact, spoiler-safe KNOWLEDGE GRAPH block.
+ * Everything here is already chapter-gated by the graph queries (facts known as of the boundary).
+ */
+const formatGraphContext = (entities: GraphEntity[], edges: NamedEdge[]): string => {
+  if (entities.length === 0) return '';
+  const lines = entities.map((e) => {
+    const aka = e.aliases.length > 0 ? ` (aka ${e.aliases.join(', ')})` : '';
+    const state = e.latestState ? ` — ${e.latestState}` : '';
+    const rels = edges
+      .filter((r) => r.sourceName === e.name || r.targetName === e.name)
+      .slice(0, 6)
+      .map((r) => {
+        const other = r.sourceName === e.name ? r.targetName : r.sourceName;
+        const dir = r.sourceName === e.name ? `${r.relType} -> ${other}` : `${other} ${r.relType} ->`;
+        const until = r.untilChapter !== null ? ` (Ch. ${r.sinceChapter}–${r.untilChapter})` : ` (since Ch. ${r.sinceChapter})`;
+        return `    - ${dir}${until}${r.description ? `: ${r.description}` : ''}`;
+      });
+    return `- ${e.name} [${e.entityType}]${aka}${state}\n${rels.join('\n')}`.trimEnd();
+  });
+  return `\n\nKNOWLEDGE GRAPH (facts known as of the reader's current chapter):\n${lines.join('\n')}`;
+};
+
+/**
  * Answers a user's question about a story using RAG with hybrid search
  * and image-aware responses.
  */
@@ -158,10 +184,29 @@ export const answerQuery = async (
     // Step 1: Generate embedding
     const embedding = await generateEmbedding(query);
 
+    // Step 1.7: GraphRAG — link the query to known entities (spoiler-visible aliases only), expand
+    // the keyword arm with those aliases ("Dead End" also retrieves "Ruijerd" passages), and build a
+    // KNOWLEDGE GRAPH context block. No-op when the story has no graph. Non-fatal.
+    let graphContext = '';
+    let keywordQuery = query;
+    if (storyId) {
+      try {
+        const linked = await linkEntities(query, storyId, boundary ?? 0);
+        if (linked.length > 0) {
+          const aliasTerms = [...new Set(linked.flatMap((e) => [e.name, ...e.aliases]))];
+          keywordQuery = `${query} ${aliasTerms.join(' ')}`;
+          const ego = await getEgoNetwork(linked.map((e) => e.entityId), storyId, boundary ?? 0);
+          graphContext = formatGraphContext(linked, ego);
+        }
+      } catch (err) {
+        console.error('Graph linking failed (non-fatal):', err);
+      }
+    }
+
     // Step 2: Hybrid search — semantic + keyword, cross-volume aware (resolved boundary + prior volumes)
     const [semanticBlocks, keywordBlocks] = await Promise.all([
       findSimilarBlocks(embedding, storyId, boundary, 5, priorVolumeIds),
-      findBlocksByKeyword(query, storyId, boundary, 5, priorVolumeIds),
+      findBlocksByKeyword(keywordQuery, storyId, boundary, 5, priorVolumeIds),
     ]);
 
     // Merge and deduplicate, preferring semantic scores
@@ -230,6 +275,12 @@ export const answerQuery = async (
             + 'do NOT speculate about their future payoff as fact):\n'
             + seeds.map(s => `- [Ch. ${s.setupChapter}] ${s.setupSummary} — ${s.hint}`).join('\n');
         }
+        // OPEN PLOT THREADS: unresolved threads as of the boundary, to ground foreshadowing.
+        const threads = await getOpenThreads(storyId, boundary ?? 0);
+        if (threads.length > 0) {
+          foreshadowContext += '\n\nOPEN PLOT THREADS (unresolved as of the current chapter):\n'
+            + threads.map(t => `- ${t.name}: ${t.latestBeat}`).join('\n');
+        }
       } catch (err) {
         console.error('Foreshadowing seed lookup failed (non-fatal):', err);
       }
@@ -241,6 +292,7 @@ export const answerQuery = async (
 
 STORY CONTEXT (Read so far):
 ${storyContext || '(no matching content found)'}
+${graphContext}
 
 EXTERNAL KNOWLEDGE (Theories/Facts):
 ${externalContext || 'None'}
