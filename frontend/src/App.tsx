@@ -4,6 +4,7 @@ import StoryList from './pages/StoryList';
 import Reader from './pages/Reader';
 import ChatPage from './pages/ChatPage';
 import AdminPage from './pages/AdminPage';
+import RecapPage from './pages/RecapPage';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
             <Route path="/" element={<StoryList />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/story/:storyId/recap" element={<RecapPage />} />
             <Route path="/story/:storyId/chapter/:chapterId" element={<Reader />} />
           </Routes>
         </main>
