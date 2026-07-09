@@ -10,7 +10,10 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
     "test": "vitest run",
-    "test:watch": "vitest watch"
+    "test:watch": "vitest watch",
+    "migrate": "node-pg-migrate -m ../db/migrations -j sql --migrations-table schema_migrations",
+    "migrate:up": "node-pg-migrate up -m ../db/migrations -j sql --migrations-table schema_migrations",
+    "migrate:down": "node-pg-migrate down -m ../db/migrations -j sql --migrations-table schema_migrations"
   },
   "keywords": [],
   "author": "",
@@ -42,6 +45,7 @@
     "@typescript-eslint/parser": "^8.46.4",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
+    "node-pg-migrate": "^8.0.4",
     "supertest": "^7.1.4",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.6",

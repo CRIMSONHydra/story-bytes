@@ -18,6 +18,8 @@ import {
   getImagesFromChapters,
 } from './db';
 import { searchWeb } from './search';
+import { getForeshadowLinks, getLivePayoffSummaries } from './graph';
+import { checkPayoffLeak } from './answerGuard';
 
 export type ChatMode = 'recall' | 'foreshadowing' | 'theory';
 
@@ -234,6 +236,23 @@ export const answerQuery = async (
       }).join('\n')
       : '';
 
+    // Foreshadowing seeds (plan §2.14): in foreshadowing mode, ground the answer in pre-identified
+    // setups whose payoff is still ahead of the reader. Only setup + pre-vetted hint enter the prompt
+    // — the payoff was never selected — so this is spoiler-safe by construction.
+    let foreshadowContext = '';
+    if (effectiveMode === 'foreshadowing' && storyId) {
+      try {
+        const seeds = await getForeshadowLinks(storyId, currentChapter ?? 0);
+        if (seeds.length > 0) {
+          foreshadowContext = '\n\nFORESHADOWING SEEDS (details already read that are worth keeping in mind — '
+            + 'do NOT speculate about their future payoff as fact):\n'
+            + seeds.map(s => `- [Ch. ${s.setupChapter}] ${s.setupSummary} — ${s.hint}`).join('\n');
+        }
+      } catch (err) {
+        console.error('Foreshadowing seed lookup failed (non-fatal):', err);
+      }
+    }
+
     // Step 6: Generate Answer
     const systemPrompt = buildSystemPrompt(effectiveMode, currentChapter);
     const prompt = `${systemPrompt}
@@ -243,7 +262,7 @@ ${storyContext || '(no matching content found)'}
 
 EXTERNAL KNOWLEDGE (Theories/Facts):
 ${externalContext || 'None'}
-${imageContext}
+${imageContext}${foreshadowContext}
 
 User Question: ${query}
 
@@ -252,7 +271,23 @@ Answer:`;
     const model = getModel();
     const temperature = effectiveMode === 'theory' ? undefined : 0;
     const result = await model.generateContent(prompt, { temperature });
-    const answer = result.response.text();
+    let answer = result.response.text();
+
+    // Foreshadowing backstop (plan §2.14.4): the payoff never entered the prompt, but as a defense
+    // against the model reconstructing it from training data, check the answer against the live
+    // payoff summaries and fail closed if it leaks.
+    if (effectiveMode === 'foreshadowing' && storyId && foreshadowContext) {
+      try {
+        const payoffs = await getLivePayoffSummaries(storyId, currentChapter ?? 0);
+        if (payoffs.length > 0 && await checkPayoffLeak(answer, payoffs)) {
+          answer =
+            "I can point to a few details worth keeping in mind, but I won't speculate about where they "
+            + "lead — that would risk spoiling what's ahead. Look again at the highlighted setups above.";
+        }
+      } catch (err) {
+        console.error('Foreshadowing answer guard failed (non-fatal):', err);
+      }
+    }
 
     // Build sources from blocks used
     const sources: ChatSource[] = mergedBlocks.map(b => ({
