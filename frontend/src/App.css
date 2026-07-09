@@ -502,6 +502,67 @@ header {
   background: #555;
 }
 
+/* Source type variants */
+.source-type-graph {
+  background: #3a2d5a;
+  color: #c9b8ff;
+}
+
+.source-type-graph:hover {
+  background: #4a3a6e;
+}
+
+.source-type-external {
+  background: #2d4a3a;
+  color: #a3e8c9;
+}
+
+.source-type-external:hover {
+  background: #3a5e4a;
+}
+
+/* Confidence + context signals */
+.chat-signals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.confidence-badge {
+  display: inline-block;
+  padding: 0.12em 0.55em;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.confidence-high {
+  background: #2d5a2733;
+  color: #a3e89a;
+  border: 1px solid #2d5a2766;
+}
+
+.confidence-medium {
+  background: #5a4a2733;
+  color: #e8cf9a;
+  border: 1px solid #5a4a2766;
+}
+
+.confidence-low {
+  background: #44444488;
+  color: #b0b0b0;
+  border: 1px solid #55555588;
+}
+
+.limited-info-note {
+  font-size: 0.7rem;
+  color: #c9a86b;
+  font-style: italic;
+}
+
 /* Chat images */
 .chat-images {
   display: flex;
