@@ -15,7 +15,8 @@ from typing import List, Optional
 from google import genai
 from google.genai import types as genai_types
 
-JUDGE_MODEL = "gemini-2.5-flash"
+import os
+JUDGE_MODEL = os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-latest")
 
 _JUDGE_PROMPT = """You are grading a spoiler-safety test for a story-reading assistant.
 

@@ -5,6 +5,7 @@
  */
 
 import { getModel, generateEmbedding, EMBEDDING_MODEL_TAG } from './llm';
+import { MAIN_MODEL } from '../config/models';
 import {
   findSimilarBlocks,
   findSimilarExternalKnowledge,
@@ -445,7 +446,7 @@ export const summarizeStory = async (
   storyId: string,
   upToChapter: number
 ): Promise<string> => {
-  const modelName = 'gemini-2.5-flash';
+  const modelName = MAIN_MODEL;
 
   // Check cache first
   const cached = await getCachedSummary(storyId, upToChapter, modelName);

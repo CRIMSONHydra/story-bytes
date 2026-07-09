@@ -15,7 +15,9 @@ from typing import Optional
 from google import genai
 from google.genai import types as genai_types
 
-GUARD_MODEL = "gemini-2.5-flash-lite"
+import os
+# Centralized via GEMINI_LITE_MODEL (see ingestion/models.py); gemini-2.5-flash-lite was retired.
+GUARD_MODEL = os.getenv("GEMINI_LITE_MODEL", "gemini-flash-lite-latest")
 
 _GUARD_PROMPT = """You are a spoiler-safety guard. You are given a SETUP HINT that will be shown to a
 reader, and a PAYOFF (a future spoiler the reader must NOT learn yet).

@@ -5,6 +5,7 @@
 
 import { GoogleGenAI } from '@google/genai';
 import { env } from '../config/env';
+import { MAIN_MODEL, LITE_MODEL, EMBEDDING_MODEL_ID } from '../config/models';
 
 // Lazily initialize the Google GenAI client. Deferring construction until first use avoids the
 // SDK's "API key should be set" warning firing at import time in environments where Gemini is never
@@ -35,7 +36,7 @@ export const getModel = () => {
      */
     generateContent: async (prompt: string, options?: { temperature?: number }) => {
       const response = await genAIModels().generateContent({
-        model: 'gemini-2.5-flash',
+        model: MAIN_MODEL,
         contents: prompt,
         config: options?.temperature !== undefined ? { temperature: options.temperature } : undefined,
       });
@@ -54,7 +55,7 @@ export const getModel = () => {
  * cannot be parsed as JSON (callers decide how to handle — e.g. the answer-guard fails closed).
  *
  * @param prompt - the user prompt
- * @param options.model - model id (default gemini-2.5-flash-lite: cheap, fast, for guard/rewrite/judge)
+ * @param options.model - model id (default LITE_MODEL: cheap, fast, for guard/rewrite/judge)
  * @param options.systemInstruction - system-role instruction (prompt-injection separation)
  */
 export const generateJson = async (
@@ -62,7 +63,7 @@ export const generateJson = async (
   options?: { model?: string; systemInstruction?: string },
 ): Promise<Record<string, unknown> | null> => {
   const response = await genAIModels().generateContent({
-    model: options?.model ?? 'gemini-2.5-flash-lite',
+    model: options?.model ?? LITE_MODEL,
     contents: prompt,
     config: {
       responseMimeType: 'application/json',
@@ -96,7 +97,7 @@ const parseJsonResponse = (text: string): Record<string, unknown> | null => {
  * @returns Promise resolving to an array of numbers representing the embedding vector
  * @throws Error if embedding generation fails or response is invalid
  */
-export const EMBEDDING_MODEL = 'gemini-embedding-001';
+export const EMBEDDING_MODEL = EMBEDDING_MODEL_ID;
 
 /**
  * The embedding "model tag" retrieval matches on (block_embeddings.model). Task-typed document

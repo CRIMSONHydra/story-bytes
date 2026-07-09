@@ -20,8 +20,10 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # Embedding model configuration
-EMBEDDING_MODEL = "gemini-embedding-001"
+EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
 EMBEDDING_DIMENSIONS = 768
+# Vision model for image tagging (centralized via GEMINI_MAIN_MODEL; gemini-2.5-flash was retired).
+IMAGE_MODEL = os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-latest")
 EMBEDDING_BATCH_SIZE = 100  # Gemini supports up to 100 per batch
 
 
@@ -166,7 +168,7 @@ def tag_image_with_vision(
     """Use Gemini vision to generate visual tags for an image."""
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=IMAGE_MODEL,
             contents=[
                 genai_types.Content(
                     parts=[

@@ -4,9 +4,13 @@ PROMPT_VERSION is stored on kg_extraction_runs / kg_foreshadow_links so that bum
 prompt invalidates prior runs and lets --rebuild re-extract deterministically.
 """
 
+import os
+
 PROMPT_VERSION = 1
 
-GRAPH_MODEL = "gemini-2.5-flash"
+# Centralized via the GEMINI_MAIN_MODEL env var (see ingestion/models.py). gemini-2.5-flash was
+# retired (404); default tracks the current flash tier.
+GRAPH_MODEL = os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-latest")
 
 # ---------------------------------------------------------------------------
 # Per-chapter graph extraction (chapter-local: only sees text up to this chapter)

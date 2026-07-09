@@ -231,7 +231,7 @@ def enrich_image(
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-latest"),
             contents=[genai_types.Content(parts=parts)],
         )
         text = (response.text or "").strip()

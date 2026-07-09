@@ -708,14 +708,22 @@ The app uses `gemini-2.5-flash` (chat/summarize/extraction/enrich/judge), `gemin
 | `gemini-embedding-2` | 0.20 | — | +$0.05/1M, newer |
 | `gemini-2.0-flash` | — | — | **shut down 2026-06-01 (unused here)** |
 
-**Finding:** there is **no free like-for-like upgrade** — the Gemini 3.x text tier costs 2–5× the
-2.5 tier we run. So the recommendation is:
+**UPDATE (2026-07, forced): `gemini-2.5-flash` AND `gemini-2.5-flash-lite` were retired (both now
+404 at the API).** This broke every runtime LLM call. Migrated to the `-latest` aliases
+(`gemini-flash-latest`, `gemini-flash-lite-latest`), which track the current tier and **survive
+future retirements** (the whole reason this bit us). `gemini-embedding-001` is still active
+(embeddings unaffected). Model IDs are now centralized + env-overridable:
+`backend/src/config/models.ts` (`MAIN_MODEL`/`LITE_MODEL`/`EMBEDDING_MODEL_ID`) and
+`ingestion/models.py`, with every caller reading the same `GEMINI_MAIN_MODEL` / `GEMINI_LITE_MODEL`
+/ `GEMINI_EMBEDDING_MODEL` env vars — so a swap is one env change, no code edit.
 
-1. **Keep the 2.5 tier as the cost-effective default.** It is active and cheapest.
-2. **Centralize model IDs** (currently scattered: `backend/src/services/llm.ts`,
-   `ingestion/graph/prompts.py` `GRAPH_MODEL`, `ingestion/graph/guard.py` `GUARD_MODEL`,
-   `eval/judge.py` `JUDGE_MODEL`) into one config per language (`backend/src/config/models.ts`,
-   `ingestion/models.py`) so a swap is a one-line, eval-gated change. **This is the actionable item.**
+**Finding:** there is **no free like-for-like upgrade** — the pinned Gemini 3.x text tier costs 2–5×
+the (now-dead) 2.5 tier. So:
+
+1. **Default to the `-latest` flash/flash-lite aliases** (done). They stay on the cheapest current
+   tier and don't 404 on the next retirement. Pin an explicit version via env only if reproducibility
+   matters more than resilience.
+2. **Model IDs are centralized** (done) — swapping is now an env var, eval-gated.
 3. **Optional, eval-gated upgrades** (measure with the M7 harness before switching):
    `gemini-3.1-flash-lite` for the main tier (better model, cheaper output than 2.5-flash, but pricier
    than 2.5-flash-lite for the guard/judge lite work — so cost impact is mixed); `gemini-embedding-2`
