@@ -6,6 +6,18 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+// Hermetic: mock the DB pool so any db/graph function NOT explicitly spied below (e.g.
+// getImagesFromChapters, getForeshadowLinks) returns empty instead of attempting a real
+// connection. Without this the suite silently passes on swallowed ECONNREFUSED errors in CI.
+vi.mock('../db/pool', () => ({
+  pool: {
+    query: vi.fn().mockResolvedValue({ rows: [] }),
+    connect: vi.fn().mockResolvedValue({ query: vi.fn().mockResolvedValue({ rows: [] }), release: vi.fn() }),
+  },
+  checkDatabase: vi.fn(),
+  closePool: vi.fn(),
+}));
+
 import * as llm from '../services/llm';
 import * as db from '../services/db';
 import * as search from '../services/search';

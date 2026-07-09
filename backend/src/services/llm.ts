@@ -6,8 +6,16 @@
 import { GoogleGenAI } from '@google/genai';
 import { env } from '../config/env';
 
-// Initialize Google GenAI client with API key from environment
-const genAI = new GoogleGenAI({ apiKey: env.geminiApiKey || '' });
+// Lazily initialize the Google GenAI client. Deferring construction until first use avoids the
+// SDK's "API key should be set" warning firing at import time in environments where Gemini is never
+// called (e.g. unit tests, which mock all model calls) or not configured (reading-only mode).
+let genAIClient: GoogleGenAI | null = null;
+const genAIModels = () => {
+  if (!genAIClient) {
+    genAIClient = new GoogleGenAI({ apiKey: env.geminiApiKey || '' });
+  }
+  return genAIClient.models;
+};
 
 /**
  * Gets a model wrapper that provides a compatible interface for text generation.
@@ -26,7 +34,7 @@ export const getModel = () => {
      * @returns Promise resolving to response object with text() method
      */
     generateContent: async (prompt: string, options?: { temperature?: number }) => {
-      const response = await genAI.models.generateContent({
+      const response = await genAIModels().generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
         config: options?.temperature !== undefined ? { temperature: options.temperature } : undefined,
@@ -53,7 +61,7 @@ export const generateJson = async (
   prompt: string,
   options?: { model?: string; systemInstruction?: string },
 ): Promise<Record<string, unknown> | null> => {
-  const response = await genAI.models.generateContent({
+  const response = await genAIModels().generateContent({
     model: options?.model ?? 'gemini-2.5-flash-lite',
     contents: prompt,
     config: {
@@ -91,7 +99,7 @@ const parseJsonResponse = (text: string): Record<string, unknown> | null => {
 export const EMBEDDING_MODEL = 'gemini-embedding-001';
 
 export const generateEmbedding = async (text: string): Promise<number[]> => {
-  const response = await genAI.models.embedContent({
+  const response = await genAIModels().embedContent({
     model: EMBEDDING_MODEL,
     contents: text,
     config: { outputDimensionality: 768 },
