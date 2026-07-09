@@ -515,6 +515,36 @@ export const upsertReadingProgress = async (userId: string, storyId: string, cha
 };
 
 /**
+ * M9: persist a RAG trace (fire-and-forget from the pipeline; never throws to the caller's flow).
+ */
+export interface RagTrace {
+  traceId: string;
+  storyId: string | null;
+  mode: string;
+  boundaryChapter: number | null;
+  query: string;
+  answer: string;
+  confidence: string;
+  sourceCount: number;
+  insufficientContext: boolean;
+}
+
+export const saveRagTrace = async (t: RagTrace): Promise<void> => {
+  await pool.query(
+    `INSERT INTO rag_traces
+       (trace_id, story_id, mode, boundary_chapter, query, answer, confidence, source_count, insufficient_context)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (trace_id) DO NOTHING`,
+    [t.traceId, t.storyId, t.mode, t.boundaryChapter, t.query, t.answer, t.confidence, t.sourceCount, t.insufficientContext],
+  );
+};
+
+export const getRagTrace = async (traceId: string) => {
+  const result = await pool.query('SELECT * FROM rag_traces WHERE trace_id = $1', [traceId]);
+  return result.rows[0] ?? null;
+};
+
+/**
  * Get asset binary data or storage info for serving images.
  */
 export const getAssetById = async (assetId: string) => {

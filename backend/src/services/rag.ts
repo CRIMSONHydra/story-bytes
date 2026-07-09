@@ -22,13 +22,56 @@ import {
 } from './graph';
 import { checkPayoffLeak } from './answerGuard';
 import { resolveSpoilerScope, DEFAULT_USER_ID } from './spoilerScope';
+import { saveRagTrace } from './db';
+import { randomUUID } from 'crypto';
+
+interface ParsedAnswer {
+  answer: string;
+  citations: string[];
+  confidence: Confidence;
+  insufficientContext: boolean;
+}
+
+/**
+ * Parse the model's structured answer JSON. Degrades gracefully: if the output isn't the expected
+ * JSON (older prompts, mocked plain-text responses), the whole text becomes the answer with no
+ * citations and medium confidence, so callers never lose the answer.
+ */
+const parseStructuredAnswer = (raw: string): ParsedAnswer => {
+  let t = (raw || '').trim();
+  if (t.startsWith('```')) {
+    const nl = t.indexOf('\n');
+    t = nl >= 0 ? t.slice(nl + 1) : t.slice(3);
+    if (t.endsWith('```')) t = t.slice(0, -3);
+    t = t.trim();
+  }
+  try {
+    const o = JSON.parse(t) as Record<string, unknown>;
+    if (o && typeof o.answer === 'string') {
+      const conf = o.confidence;
+      return {
+        answer: o.answer,
+        citations: Array.isArray(o.citations) ? o.citations.map(String) : [],
+        confidence: conf === 'high' || conf === 'low' ? conf : 'medium',
+        insufficientContext: Boolean(o.insufficient_context),
+      };
+    }
+  } catch {
+    // not JSON — fall through to plain-text treatment
+  }
+  return { answer: (raw || '').trim(), citations: [], confidence: 'medium', insufficientContext: false };
+};
 
 export type ChatMode = 'recall' | 'foreshadowing' | 'theory';
+
+export type Confidence = 'high' | 'medium' | 'low';
 
 export interface ChatSource {
   chapterOrder: number;
   blockId: string;
   title: string;
+  snippet?: string;
+  sourceType?: 'block' | 'graph' | 'external';
 }
 
 export interface ChatImage {
@@ -42,6 +85,9 @@ export interface ChatResponse {
   answer: string;
   sources: ChatSource[];
   images: ChatImage[];
+  confidence: Confidence;
+  insufficientContext: boolean;
+  traceId: string;
 }
 
 /**
@@ -148,6 +194,7 @@ export const answerQuery = async (
   mode: ChatMode = 'recall',
   userId: string = DEFAULT_USER_ID
 ): Promise<ChatResponse> => {
+  const traceId = randomUUID();
   try {
     // Resolve the spoiler boundary server-side when a story is scoped (default-deny: an omitted
     // currentChapter falls back to reading_progress, then 0 — never "everything"). priorVolumeIds
@@ -175,6 +222,9 @@ export const answerQuery = async (
         answer: summaryParts.join('\n\n---\n\n'),
         sources: [],
         images: [],
+        confidence: 'high',
+        insufficientContext: false,
+        traceId,
       };
     }
 
@@ -247,11 +297,11 @@ export const answerQuery = async (
       }
     }
 
-    // Step 5: Format Context
+    // Step 5: Format Context — label each block [S1]..[Sn] so the model can cite specific sources.
     const storyContext = mergedBlocks
-      .map((block) => {
+      .map((block, i) => {
         const volumePrefix = block.story_title ? `${block.story_title}, ` : '';
-        return `[${volumePrefix}Chapter ${block.chapter_order}: ${block.title}]\n${block.text_content}`;
+        return `[S${i + 1}] [${volumePrefix}Chapter ${block.chapter_order}: ${block.title}]\n${block.text_content}`;
       })
       .join('\n\n');
 
@@ -300,12 +350,22 @@ ${imageContext}${foreshadowContext}
 
 User Question: ${query}
 
-Answer:`;
+Respond as STRICT JSON (no markdown fences):
+{"answer": "<your answer in prose>",
+ "citations": ["S1", "S3", ...],   // the [S#] labels you actually used from STORY CONTEXT
+ "confidence": "high|medium|low",   // how well the context supports the answer
+ "insufficient_context": true|false} // true if the read chapters don't contain the answer`;
 
     const model = getModel();
     const temperature = effectiveMode === 'theory' ? undefined : 0;
     const result = await model.generateContent(prompt, { temperature });
-    let answer = result.response.text();
+    const rawOutput = result.response.text();
+
+    // Parse structured output; degrade gracefully to plain text if the model didn't return JSON.
+    const parsed = parseStructuredAnswer(rawOutput);
+    let answer = parsed.answer;
+    const confidence: Confidence = parsed.confidence;
+    const insufficientContext = parsed.insufficientContext;
 
     // Foreshadowing backstop (plan §2.14.4): the payoff never entered the prompt, but as a defense
     // against the model reconstructing it from training data, check the answer against the live
@@ -323,11 +383,19 @@ Answer:`;
       }
     }
 
-    // Build sources from blocks used
-    const sources: ChatSource[] = mergedBlocks.map(b => ({
+    // Build sources. Prefer cited-only (labels validated against the retrieved set — hallucinated
+    // labels dropped). If the model returned no valid citations (or didn't produce JSON), fall back
+    // to the retrieved blocks so we never return an answer with zero provenance.
+    const citedIdx = parsed.citations
+      .map(label => parseInt(label.replace(/[^0-9]/g, ''), 10) - 1)
+      .filter(i => Number.isInteger(i) && i >= 0 && i < mergedBlocks.length);
+    const chosen = citedIdx.length > 0 ? [...new Set(citedIdx)].map(i => mergedBlocks[i]) : mergedBlocks;
+    const sources: ChatSource[] = chosen.map(b => ({
       chapterOrder: b.chapter_order,
       blockId: b.block_id,
       title: b.title,
+      snippet: (b.text_content || '').trim().slice(0, 200),
+      sourceType: 'block' as const,
     }));
 
     // Build image list — combine asset-embedded images + chapter illustrations
@@ -351,14 +419,19 @@ Answer:`;
       }
     }
 
-    return { answer, sources, images };
+    // Fire-and-forget trace for debugging + the eval retrieval suite (never blocks the response).
+    void saveRagTrace({
+      traceId, storyId: storyId ?? null, mode: effectiveMode, boundaryChapter: boundary ?? null,
+      query, answer, confidence, sourceCount: sources.length, insufficientContext,
+    }).catch(err => console.error('saveRagTrace failed (non-fatal):', err));
+
+    return { answer, sources, images, confidence, insufficientContext, traceId };
   } catch (error) {
-    console.error('Error in RAG answerQuery:', error);
-    return {
-      answer: "I'm sorry, I encountered an error while trying to answer your question.",
-      sources: [],
-      images: [],
-    };
+    // Hard pipeline failure: log and rethrow so the controller returns 502 (monitoring-visible),
+    // instead of masking an outage as a 200 "apology". Insufficient-context is NOT an error — that
+    // is a normal 200 with insufficientContext=true handled above.
+    console.error(`Error in RAG answerQuery (trace ${traceId}):`, error);
+    throw error;
   }
 };
 

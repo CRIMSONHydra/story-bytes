@@ -12,7 +12,7 @@ import { handleGetRecap } from './controllers/recap';
 import { handleGetStoryGraph, handleSearchEntities, handleGetEntity, handleGetThreads } from './controllers/graph';
 import { handleGetAssetImage, handleGetStoryImage } from './controllers/assets';
 import { handleGetProgress, handleUpdateProgress } from './controllers/progress';
-import { handleAdminGetStories, handleAdminDeleteStory, handleAdminIngest, handleGetSeries } from './controllers/admin';
+import { handleAdminGetStories, handleAdminDeleteStory, handleAdminIngest, handleGetSeries, handleGetTrace } from './controllers/admin';
 import { upload } from './middleware/upload';
 import { getSeriesChapters } from './services/db';
 
@@ -67,5 +67,6 @@ router.get('/series', handleGetSeries);
 router.get('/admin/stories', handleAdminGetStories);
 router.delete('/admin/stories/:storyId', handleAdminDeleteStory);
 router.post('/admin/ingest', upload.single('file'), handleAdminIngest);
+router.get('/admin/traces/:traceId', handleGetTrace);
 
 export default router;

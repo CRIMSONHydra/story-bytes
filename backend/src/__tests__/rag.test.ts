@@ -110,14 +110,10 @@ describe('RAG answerQuery', () => {
     expect(result.answer).toContain('theories');
   });
 
-  it('returns error message when pipeline fails', async () => {
+  it('rethrows on hard pipeline failure so the controller can return 502', async () => {
     vi.spyOn(llm, 'generateEmbedding').mockRejectedValueOnce(new Error('API down'));
-
-    const result = await answerQuery('test query');
-
-    expect(result.answer).toContain('error');
-    expect(result.sources).toHaveLength(0);
-    expect(result.images).toHaveLength(0);
+    // No longer masks the outage as a 200 apology — the failure propagates (M9 / §3.4).
+    await expect(answerQuery('test query')).rejects.toThrow('API down');
   });
 
   it('returns images when available from Phase 3', async () => {
