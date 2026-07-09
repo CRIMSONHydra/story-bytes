@@ -21,6 +21,7 @@ vi.mock('../db/pool', () => ({
 import * as llm from '../services/llm';
 import * as db from '../services/db';
 import * as search from '../services/search';
+import * as spoilerScope from '../services/spoilerScope';
 import { answerQuery } from '../services/rag';
 
 // Shared mock setup for hybrid search + series lookup
@@ -176,13 +177,15 @@ describe('RAG answerQuery', () => {
     expect(result.answer).toContain('setting up');
   });
 
-  it('passes prior volume IDs for cross-volume search', async () => {
+  it('passes resolved prior volume IDs (volume_number order) for cross-volume search', async () => {
     const fakeEmbedding = Array(768).fill(0.1);
     vi.spyOn(llm, 'generateEmbedding').mockResolvedValueOnce(fakeEmbedding);
-    vi.spyOn(db, 'getStoriesInSeries').mockResolvedValueOnce([
-      { story_id: 'story-1', title: 'Test Story Vol. 1' },
-      { story_id: 'story-2', title: 'Test Story Vol. 2' },
-    ]);
+    // The boundary + prior volumes now come from resolveSpoilerScope (volume_number ordered),
+    // not the old title-sorted getStoriesInSeries.
+    vi.spyOn(spoilerScope, 'resolveSpoilerScope').mockResolvedValueOnce({
+      storyId: 'story-2', priorVolumeIds: ['story-1'], maxChapterOrder: 3,
+      boundaryKey: 'story:story-2:ch:3',
+    });
     vi.spyOn(db, 'findSimilarBlocks').mockResolvedValueOnce([]);
     vi.spyOn(db, 'findBlocksByKeyword').mockResolvedValueOnce([]);
     vi.spyOn(db, 'findRelevantImages').mockResolvedValueOnce([]);
@@ -194,9 +197,24 @@ describe('RAG answerQuery', () => {
 
     await answerQuery('Who is Rudeus?', 'story-2', 3);
 
-    // Should pass prior volume IDs (story-1) for cross-volume search
     expect(db.findSimilarBlocks).toHaveBeenCalledWith(
       fakeEmbedding, 'story-2', 3, 5, ['story-1']
     );
+  });
+
+  it('defaults to a spoiler-safe boundary (0) when currentChapter is omitted and no progress', async () => {
+    const fakeEmbedding = Array(768).fill(0.1);
+    vi.spyOn(llm, 'generateEmbedding').mockResolvedValueOnce(fakeEmbedding);
+    // No requestedChapter and mocked reading_progress is empty -> resolveSpoilerScope yields 0.
+    vi.spyOn(db, 'findSimilarBlocks').mockResolvedValueOnce([]);
+    mockDefaults();
+    vi.spyOn(llm, 'getModel').mockReturnValueOnce({
+      generateContent: async () => ({ response: { text: () => 'Not enough information.' } }),
+    });
+
+    await answerQuery('What happens next?', 'story-1');  // currentChapter omitted
+
+    // Boundary resolves to 0 (default-deny), not undefined/"everything".
+    expect(db.findSimilarBlocks).toHaveBeenCalledWith(fakeEmbedding, 'story-1', 0, 5, undefined);
   });
 });

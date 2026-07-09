@@ -18,6 +18,7 @@ import {
 } from './db';
 import { getForeshadowLinks, getLivePayoffSummaries } from './graph';
 import { checkPayoffLeak } from './answerGuard';
+import { resolveSpoilerScope, DEFAULT_USER_ID } from './spoilerScope';
 
 export type ChatMode = 'recall' | 'foreshadowing' | 'theory';
 
@@ -118,19 +119,28 @@ export const answerQuery = async (
   query: string,
   storyId?: string,
   currentChapter?: number,
-  mode: ChatMode = 'recall'
+  mode: ChatMode = 'recall',
+  userId: string = DEFAULT_USER_ID
 ): Promise<ChatResponse> => {
   try {
+    // Resolve the spoiler boundary server-side when a story is scoped (default-deny: an omitted
+    // currentChapter falls back to reading_progress, then 0 — never "everything"). priorVolumeIds
+    // come from resolveSpoilerScope, ordered by volume_number (not the old lexicographic title sort).
+    const scope = storyId ? await resolveSpoilerScope(storyId, currentChapter, userId) : null;
+    const boundary = scope ? scope.maxChapterOrder : currentChapter;
+    const priorVolumeIds = scope && scope.priorVolumeIds.length > 0 ? scope.priorVolumeIds : undefined;
+
     // Handle summary queries using the summarization pipeline
     if (detectSummaryIntent(query) && storyId) {
       const seriesStories = await getStoriesInSeries(storyId);
       const currentIdx = seriesStories.findIndex(s => s.story_id === storyId);
 
-      // Summarize each volume up to and including the current one
+      // Summarize each volume up to and including the current one; prior volumes are fully read,
+      // the current one is capped at the resolved boundary.
       const summaryParts: string[] = [];
       for (let i = 0; i <= currentIdx; i++) {
         const vol = seriesStories[i];
-        const maxChapter = (i < currentIdx) ? 999 : (currentChapter ?? 999);
+        const maxChapter = (i < currentIdx) ? 999 : (boundary ?? 0);
         const summary = await summarizeStory(vol.story_id, maxChapter);
         summaryParts.push(`## ${vol.title}\n\n${summary}`);
       }
@@ -148,21 +158,10 @@ export const answerQuery = async (
     // Step 1: Generate embedding
     const embedding = await generateEmbedding(query);
 
-    // Step 1.5: Look up series for cross-volume search
-    let priorVolumeIds: string[] | undefined;
-    if (storyId) {
-      const seriesStories = await getStoriesInSeries(storyId);
-      if (seriesStories.length > 1) {
-        // All volumes before the current one in the series (sorted by title)
-        const currentIdx = seriesStories.findIndex(s => s.story_id === storyId);
-        priorVolumeIds = seriesStories.slice(0, currentIdx).map(s => s.story_id);
-      }
-    }
-
-    // Step 2: Hybrid search — semantic + keyword, cross-volume aware
+    // Step 2: Hybrid search — semantic + keyword, cross-volume aware (resolved boundary + prior volumes)
     const [semanticBlocks, keywordBlocks] = await Promise.all([
-      findSimilarBlocks(embedding, storyId, currentChapter, 5, priorVolumeIds),
-      findBlocksByKeyword(query, storyId, currentChapter, 5, priorVolumeIds),
+      findSimilarBlocks(embedding, storyId, boundary, 5, priorVolumeIds),
+      findBlocksByKeyword(query, storyId, boundary, 5, priorVolumeIds),
     ]);
 
     // Merge and deduplicate, preferring semantic scores
@@ -183,8 +182,8 @@ export const answerQuery = async (
     // Step 3: Image retrieval — from asset embeddings + from matched chapters
     const matchedChapterOrders = [...new Set(mergedBlocks.map(b => b.chapter_order))];
     const [relevantImages, chapterImages] = await Promise.all([
-      findRelevantImages(embedding, storyId, currentChapter),
-      storyId ? getImagesFromChapters(matchedChapterOrders, storyId, currentChapter) : Promise.resolve([]),
+      findRelevantImages(embedding, storyId, boundary),
+      storyId ? getImagesFromChapters(matchedChapterOrders, storyId, boundary) : Promise.resolve([]),
     ]);
 
     let externalContext = '';
@@ -225,7 +224,7 @@ export const answerQuery = async (
     let foreshadowContext = '';
     if (effectiveMode === 'foreshadowing' && storyId) {
       try {
-        const seeds = await getForeshadowLinks(storyId, currentChapter ?? 0);
+        const seeds = await getForeshadowLinks(storyId, boundary ?? 0);
         if (seeds.length > 0) {
           foreshadowContext = '\n\nFORESHADOWING SEEDS (details already read that are worth keeping in mind — '
             + 'do NOT speculate about their future payoff as fact):\n'
@@ -237,7 +236,7 @@ export const answerQuery = async (
     }
 
     // Step 6: Generate Answer
-    const systemPrompt = buildSystemPrompt(effectiveMode, currentChapter);
+    const systemPrompt = buildSystemPrompt(effectiveMode, boundary);
     const prompt = `${systemPrompt}
 
 STORY CONTEXT (Read so far):
@@ -261,7 +260,7 @@ Answer:`;
     // payoff summaries and fail closed if it leaks.
     if (effectiveMode === 'foreshadowing' && storyId && foreshadowContext) {
       try {
-        const payoffs = await getLivePayoffSummaries(storyId, currentChapter ?? 0);
+        const payoffs = await getLivePayoffSummaries(storyId, boundary ?? 0);
         if (payoffs.length > 0 && await checkPayoffLeak(answer, payoffs)) {
           answer =
             "I can point to a few details worth keeping in mind, but I won't speculate about where they "

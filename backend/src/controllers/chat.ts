@@ -6,6 +6,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { answerQuery } from '../services/rag';
+import { DEFAULT_USER_ID } from '../services/spoilerScope';
 
 /**
  * Request body schema for chat endpoint.
@@ -34,9 +35,10 @@ export const handleChat = async (req: Request, res: Response) => {
   }
 
   const { query, storyId, currentChapter, mode } = validation.data;
+  const userId = (req.headers['x-user-id'] as string) || DEFAULT_USER_ID;
 
   try {
-    const result = await answerQuery(query, storyId, currentChapter, mode);
+    const result = await answerQuery(query, storyId, currentChapter, mode, userId);
     res.json(result);
   } catch (error) {
     console.error('Chat controller error:', error);

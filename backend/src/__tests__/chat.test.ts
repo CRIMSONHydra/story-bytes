@@ -31,6 +31,7 @@ vi.mock('../services/db', () => ({
 }));
 
 import { answerQuery } from '../services/rag';
+import { DEFAULT_USER_ID } from '../services/spoilerScope';
 
 const TEST_UUID = '123e4567-e89b-12d3-a456-426614174000';
 
@@ -57,7 +58,9 @@ describe('POST /api/chat', () => {
     });
     expect(response.body.sources).toBeDefined();
     expect(response.body.images).toBeDefined();
-    expect(answerQuery).toHaveBeenCalledWith('Who is the protagonist?', TEST_UUID, 3, undefined);
+    expect(answerQuery).toHaveBeenCalledWith(
+      'Who is the protagonist?', TEST_UUID, 3, undefined, DEFAULT_USER_ID
+    );
   });
 
   it('missing query returns 400', async () => {
@@ -95,7 +98,8 @@ describe('POST /api/chat', () => {
       'Could the villain be the hero?',
       TEST_UUID,
       undefined,
-      'theory'
+      'theory',
+      DEFAULT_USER_ID
     );
   });
 
