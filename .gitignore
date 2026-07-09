@@ -38,3 +38,9 @@ __pycache__
 # Data (large files, user-specific)
 processed
 dataset
+
+# Claude Code per-user local settings
+.claude/settings.local.json
+
+# Generated eval reports
+eval/reports/*.json

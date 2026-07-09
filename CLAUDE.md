@@ -94,12 +94,23 @@ uv run python ingestion/enrich_images.py --all
 ## Database
 
 - PostgreSQL runs on **port 5433** (configured in `.env` as `DB_PORT=5433`)
-- Schema defined in `db/schema.sql`, migrations in `db/migrations/` (001-005)
-- 13 tables: `stories`, `chapters`, `chapter_blocks`, `chapter_sources`, `assets`, `chapter_embeddings`, `block_embeddings`, `asset_embeddings`, `annotations`, `external_knowledge`, `knowledge_embeddings`, `chapter_summaries`, `reading_progress`
+- Schema defined in `db/schema.sql` (first-boot bootstrap + drift reference). **Migrations are managed by
+  `node-pg-migrate`** with timestamp-named raw-SQL files in `db/migrations/` (see `docs/IMPROVEMENT_PLAN.md` §2.1).
+  Legacy numbered migrations 001-007 are archived in `db/legacy-migrations/`. Run migrations:
+  `cd backend && DATABASE_URL=postgresql://postgres:1234321@localhost:5433/postgres pnpm migrate:up`
+- Core content tables: `stories`, `chapters`, `chapter_blocks`, `chapter_sources`, `assets`, `chapter_embeddings`,
+  `block_embeddings`, `asset_embeddings`, `annotations`, `external_knowledge`, `knowledge_embeddings`,
+  `chapter_summaries`, `reading_progress`
+- Knowledge-graph + foreshadowing tables (Improvement Plan M14): `kg_entities`, `kg_entity_aliases`,
+  `kg_entity_states`, `kg_relationships`, `kg_events`, `kg_event_participants`, `kg_plot_threads`,
+  `kg_thread_beats`, `kg_foreshadow_links`, `kg_evidence`, `kg_entity_links`, `kg_extraction_runs`.
+  Every graph row is chapter-versioned; `kg_foreshadow_links.payoff_summary` is server-side-only and must
+  never be selected for a link whose payoff is ahead of the reader (see `docs/IMPROVEMENT_PLAN.md` §2.14).
 - Vector search uses HNSW indexes on `block_embeddings`, `asset_embeddings`, and `knowledge_embeddings`
 - Front-matter chapters (ToC, credits, etc.) are filtered from API responses
-- Apply schema: `PGPASSWORD=1234321 psql -h localhost -p 5433 -U postgres -d postgres -f db/schema.sql`
 - Ingest data: `uv run python ingestion/load_to_db.py processed/<file>.json`
+- Extract knowledge graph: `uv run python ingestion/graph/extract_graph.py --story-id <uuid>`
+  then `uv run python ingestion/graph/link_foreshadow.py --story-id <uuid>`
 
 ## API Endpoints
 
@@ -112,6 +123,7 @@ uv run python ingestion/enrich_images.py --all
 | GET | `/api/chapters/:id` | Get chapter with content blocks |
 | POST | `/api/chat` | RAG Q&A (modes: recall, foreshadowing, theory) |
 | POST | `/api/stories/:storyId/summarize` | Chapter-aware summarization |
+| GET | `/api/stories/:storyId/recap` | Catch-me-up recap; `?upToChapter=N&foreshadow=1` (opt-in spoiler-safe foreshadowing emphasis) |
 | GET | `/api/assets/:assetId/image` | Serve asset image by ID |
 | GET | `/api/stories/:storyId/image?path=...` | Serve image from EPUB archive |
 | GET | `/api/stories/:storyId/progress` | Get reading progress |

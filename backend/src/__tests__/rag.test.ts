@@ -6,6 +6,18 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+// Hermetic: mock the DB pool so any db/graph function NOT explicitly spied below (e.g.
+// getImagesFromChapters, getForeshadowLinks) returns empty instead of attempting a real
+// connection. Without this the suite silently passes on swallowed ECONNREFUSED errors in CI.
+vi.mock('../db/pool', () => ({
+  pool: {
+    query: vi.fn().mockResolvedValue({ rows: [] }),
+    connect: vi.fn().mockResolvedValue({ query: vi.fn().mockResolvedValue({ rows: [] }), release: vi.fn() }),
+  },
+  checkDatabase: vi.fn(),
+  closePool: vi.fn(),
+}));
+
 import * as llm from '../services/llm';
 import * as db from '../services/db';
 import * as search from '../services/search';
@@ -73,29 +85,27 @@ describe('RAG answerQuery', () => {
     );
   });
 
-  it('triggers web search for theory questions', async () => {
+  it('theory mode uses classified external knowledge and does NOT live-web-search (spoiler-safe interim)', async () => {
     const fakeEmbedding = Array(768).fill(0.1);
     vi.spyOn(llm, 'generateEmbedding').mockResolvedValueOnce(fakeEmbedding);
     vi.spyOn(db, 'findSimilarBlocks').mockResolvedValueOnce([]);
     mockDefaults();
-    vi.spyOn(db, 'findSimilarExternalKnowledge').mockResolvedValueOnce([]);
-    vi.spyOn(search, 'searchWeb')
-      .mockResolvedValueOnce([
-        { title: 'Wiki Theory', link: 'https://example.com/wiki', snippet: 'A wiki theory...' },
-      ])
-      .mockResolvedValueOnce([
-        { title: 'Reddit Theory', link: 'https://reddit.com/r/test', snippet: 'A reddit theory...' },
-      ]);
-    vi.spyOn(db, 'insertExternalKnowledge').mockResolvedValueOnce();
+    const knownFacts = vi.spyOn(db, 'findSimilarExternalKnowledge').mockResolvedValueOnce([
+      { knowledge_id: 'k1', content: 'A fan-submitted theory (classified safe).',
+        source_url: 'https://reddit.com/r/test', knowledge_type: 'theory', similarity: 0.8 },
+    ]);
+    const webSearch = vi.spyOn(search, 'searchWeb');
     vi.spyOn(llm, 'getModel').mockReturnValueOnce({
       generateContent: async () => ({
-        response: { text: () => 'According to online theories...' },
+        response: { text: () => 'According to the available theories...' },
       }),
     });
 
-    const result = await answerQuery('What are the theories about the mana disaster?', 'story-1', 5);
+    const result = await answerQuery('What are the theories about the mana disaster?', 'story-1', 5, 'theory');
 
-    expect(search.searchWeb).toHaveBeenCalled();
+    // Classified external knowledge IS consulted; raw live web search is NOT invoked (leak vector removed).
+    expect(knownFacts).toHaveBeenCalled();
+    expect(webSearch).not.toHaveBeenCalled();
     expect(result.answer).toContain('theories');
   });
 

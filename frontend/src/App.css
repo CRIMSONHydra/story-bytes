@@ -215,6 +215,45 @@ header {
   white-space: nowrap;
 }
 
+/* Recap links on story cards */
+.story-card-main {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.volume-item-main {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.recap-card-link {
+  margin-left: auto;
+  color: #a5a9ff;
+  text-decoration: none;
+  font-size: 0.8em;
+  padding: 0.25em 0.7em;
+  border-radius: 6px;
+  background: #646cff22;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.recap-card-link:hover {
+  background: #646cff44;
+}
+
+.recap-card-link-sm {
+  margin-left: 0;
+  font-size: 0.75em;
+  padding: 0.2em 0.5em;
+}
+
 /* Reader Layout */
 .reader-container {
   display: flex;

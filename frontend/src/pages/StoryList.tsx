@@ -122,23 +122,27 @@ export default function StoryList() {
             const story = group.stories[0];
             const prog = progress[story.story_id];
             return (
-              <Link
-                key={story.story_id}
-                to={`/story/${story.story_id}/chapter/${prog?.chapterOrder || 0}`}
-                className="card story-card"
-              >
-                <div className="card-header">
-                  <h3>{story.title}</h3>
-                  <span className={`type-tag type-${story.content_type}`}>
-                    {story.content_type}
-                  </span>
-                </div>
-                <p>{story.authors.join(', ')}</p>
+              <div key={story.story_id} className="card story-card">
+                <Link
+                  to={`/story/${story.story_id}/chapter/${prog?.chapterOrder || 0}`}
+                  className="story-card-main"
+                >
+                  <div className="card-header">
+                    <h3>{story.title}</h3>
+                    <span className={`type-tag type-${story.content_type}`}>
+                      {story.content_type}
+                    </span>
+                  </div>
+                  <p>{story.authors.join(', ')}</p>
+                </Link>
                 <div className="card-footer">
                   <span className="lang-tag">{story.language}</span>
                   {prog && <span className="progress-tag">Continue: {prog.chapterTitle}</span>}
+                  <Link to={`/story/${story.story_id}/recap`} className="recap-card-link">
+                    Recap &amp; continue
+                  </Link>
                 </div>
-              </Link>
+              </div>
             );
           }
 
@@ -167,15 +171,22 @@ export default function StoryList() {
                   {group.stories.map((story, i) => {
                     const prog = progress[story.story_id];
                     return (
-                      <Link
-                        key={story.story_id}
-                        to={`/story/${story.story_id}/chapter/${prog?.chapterOrder || 0}`}
-                        className="volume-item"
-                      >
-                        <span className="volume-number">Vol. {i + 1}</span>
-                        <span className="volume-title">{story.title}</span>
-                        {prog && <span className="progress-tag">{prog.chapterTitle}</span>}
-                      </Link>
+                      <div key={story.story_id} className="volume-item">
+                        <Link
+                          to={`/story/${story.story_id}/chapter/${prog?.chapterOrder || 0}`}
+                          className="volume-item-main"
+                        >
+                          <span className="volume-number">Vol. {i + 1}</span>
+                          <span className="volume-title">{story.title}</span>
+                          {prog && <span className="progress-tag">{prog.chapterTitle}</span>}
+                        </Link>
+                        <Link
+                          to={`/story/${story.story_id}/recap`}
+                          className="recap-card-link recap-card-link-sm"
+                        >
+                          Recap
+                        </Link>
+                      </div>
                     );
                   })}
                 </div>
