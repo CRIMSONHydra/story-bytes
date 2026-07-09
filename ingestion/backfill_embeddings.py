@@ -1,12 +1,13 @@
-"""Re-embed existing text blocks with task-typed document embeddings (plan §3.2.6, M9 D6).
+"""Re-embed existing text blocks with gemini-embedding-2 document embeddings (plan §3.2.6, §11).
 
-Writes new rows into block_embeddings under a distinct model tag (default
-'gemini-embedding-001/rd-768', task_type=RETRIEVAL_DOCUMENT) so they COEXIST with the legacy
-untyped vectors (composite PK is (block_id, model)). Retrieval flips to the new tag by setting the
-backend's EMBEDDING_MODEL_TAG env once the backfill completes — a clean, reversible cutover.
+Writes rows into block_embeddings under the embedding-2 model tag (default
+'gemini-embedding-2/1536'). gemini-embedding-2 has NO task_type parameter — the task instruction is
+prepended to the input text ("text: ..." for documents) — and it auto-normalizes truncated (MRL)
+dimensions, so cosine similarity works directly at 1536. Because the tag encodes model+dims and the
+composite PK is (block_id, model), embedding-2 vectors never collide with any legacy 768-dim rows.
 
-This is additive and non-destructive: it does not touch chapter_blocks, the graph, or the legacy
-embeddings. Checkpointed per chapter (commit per chapter) so a crash resumes cleanly.
+Checkpointed per batch (commit per batch) so a crash resumes cleanly: rows already present under the
+target tag are skipped.
 
 Usage:
     uv run python ingestion/backfill_embeddings.py --story-id <uuid> [--batch-size 64]
@@ -35,9 +36,9 @@ DB = dict(
     password=os.getenv("DB_PASSWORD", "postgres"),
 )
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-BASE_MODEL = "gemini-embedding-001"
-DIMENSIONS = 768
-DEFAULT_TAG = "gemini-embedding-001/rd-768"
+BASE_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
+DIMENSIONS = int(os.getenv("GEMINI_EMBEDDING_DIMS", "1536"))
+DEFAULT_TAG = os.getenv("EMBEDDING_MODEL_TAG", f"{BASE_MODEL}/{DIMENSIONS}")
 
 
 def get_db_connection():
@@ -45,11 +46,12 @@ def get_db_connection():
 
 
 def embed_documents(client: genai.Client, texts: List[str]) -> List[List[float]]:
+    """Embed DOCUMENT texts with gemini-embedding-2: no task_type (the instruction is in the
+    input), auto-normalized at the truncated MRL dimensionality."""
     response = client.models.embed_content(
         model=BASE_MODEL,
-        contents=texts,
-        config=genai_types.EmbedContentConfig(
-            output_dimensionality=DIMENSIONS, task_type="RETRIEVAL_DOCUMENT"),
+        contents=[f"text: {t}" for t in texts],
+        config=genai_types.EmbedContentConfig(output_dimensionality=DIMENSIONS),
     )
     return [e.values for e in response.embeddings]
 

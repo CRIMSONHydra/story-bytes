@@ -59,7 +59,7 @@ describe('RAG answerQuery', () => {
 
     const result = await answerQuery('Who is Rudeus?', 'story-1', 3);
 
-    expect(llm.generateEmbedding).toHaveBeenCalledWith('Who is Rudeus?', undefined);
+    expect(llm.generateEmbedding).toHaveBeenCalledWith('Who is Rudeus?', 'query');
     expect(db.findSimilarBlocks).toHaveBeenCalled();
     expect(result.answer).toBe('Rudeus is the main character.');
     expect(result.sources).toHaveLength(1);

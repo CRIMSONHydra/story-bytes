@@ -231,7 +231,8 @@ def enrich_image(
 
     try:
         response = client.models.generate_content(
-            model=os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-latest"),
+            # DEMO-STAGE DEFAULT: flash-lite (cost); set GEMINI_MAIN_MODEL=gemini-flash-latest post-demo.
+            model=os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-lite-latest"),
             contents=[genai_types.Content(parts=parts)],
         )
         text = (response.text or "").strip()

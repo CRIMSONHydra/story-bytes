@@ -20,10 +20,13 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # Embedding model configuration
-EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
-EMBEDDING_DIMENSIONS = 768
+EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
+EMBEDDING_DIMENSIONS = int(os.getenv("GEMINI_EMBEDDING_DIMS", "1536"))
+# Tag stored in *_embeddings.model; backend retrieval matches this (keep in sync with EMBEDDING_MODEL_TAG).
+EMBEDDING_MODEL_TAG = os.getenv("EMBEDDING_MODEL_TAG", f"{EMBEDDING_MODEL}/{EMBEDDING_DIMENSIONS}")
 # Vision model for image tagging (centralized via GEMINI_MAIN_MODEL; gemini-2.5-flash was retired).
-IMAGE_MODEL = os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-latest")
+# DEMO-STAGE DEFAULT: flash-lite (cost); set GEMINI_MAIN_MODEL=gemini-flash-latest to restore flash.
+IMAGE_MODEL = os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-lite-latest")
 EMBEDDING_BATCH_SIZE = 100  # Gemini supports up to 100 per batch
 
 
@@ -141,10 +144,11 @@ def insert_story(cursor, story_data: Dict[str, Any], content_type: str = "novel"
     return cursor.fetchone()[0]
 
 def generate_embeddings_batch(client: genai.Client, texts: List[str]) -> List[List[float]]:
-    """Generate embeddings for a batch of texts using Gemini embedding model."""
+    """Embed a batch of DOCUMENT texts with gemini-embedding-2 (no task_type; the instruction is
+    in the input) at EMBEDDING_DIMENSIONS (MRL, auto-normalized)."""
     response = client.models.embed_content(
         model=EMBEDDING_MODEL,
-        contents=texts,
+        contents=[f"text: {t}" for t in texts],
         config=genai_types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIMENSIONS),
     )
     return [e.values for e in response.embeddings]
@@ -228,7 +232,7 @@ def upsert_asset_with_tags(
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT (asset_id, model) DO UPDATE SET vector = EXCLUDED.vector
                 """,
-                (asset_id, EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, str(embs[0])),
+                (asset_id, EMBEDDING_MODEL_TAG, EMBEDDING_DIMENSIONS, str(embs[0])),
             )
         except Exception as e:
             logging.warning(f"Asset embedding failed for {href}: {e}")
@@ -407,7 +411,7 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
                         INSERT INTO block_embeddings (block_id, model, dimensions, vector)
                         VALUES (%s, %s, %s, %s)
                         """,
-                        (item["block_id"], EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, str(single[0]))
+                        (item["block_id"], EMBEDDING_MODEL_TAG, EMBEDDING_DIMENSIONS, str(single[0]))
                     )
                     embedded_count += 1
                 except Exception as inner_e:
@@ -421,7 +425,7 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
                 INSERT INTO block_embeddings (block_id, model, dimensions, vector)
                 VALUES (%s, %s, %s, %s)
                 """,
-                (item["block_id"], EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, str(emb))
+                (item["block_id"], EMBEDDING_MODEL_TAG, EMBEDDING_DIMENSIONS, str(emb))
             )
         embedded_count += len(batch)
 

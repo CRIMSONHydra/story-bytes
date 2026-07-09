@@ -5,7 +5,7 @@
 
 import { GoogleGenAI } from '@google/genai';
 import { env } from '../config/env';
-import { MAIN_MODEL, LITE_MODEL, EMBEDDING_MODEL_ID } from '../config/models';
+import { MAIN_MODEL, LITE_MODEL, EMBEDDING_MODEL_ID, EMBEDDING_DIMENSIONS } from '../config/models';
 
 // Lazily initialize the Google GenAI client. Deferring construction until first use avoids the
 // SDK's "API key should be set" warning firing at import time in environments where Gemini is never
@@ -100,27 +100,34 @@ const parseJsonResponse = (text: string): Record<string, unknown> | null => {
 export const EMBEDDING_MODEL = EMBEDDING_MODEL_ID;
 
 /**
- * The embedding "model tag" retrieval matches on (block_embeddings.model). Task-typed document
- * embeddings are stored under a distinct tag (e.g. 'gemini-embedding-001/rd-768') so they can
- * coexist with legacy untyped vectors; flip EMBEDDING_MODEL_TAG to cut retrieval over once the
- * backfill completes (clean rollback — plan §3.2.6, M9 D6).
+ * The embedding "model tag" retrieval matches on (block_embeddings.model). Vectors from a given
+ * model+dimensionality live under one tag; retrieval matches it. Bumping the model/dims changes the
+ * tag so old and new vectors never mix (they have different dimensions anyway).
  */
-export const EMBEDDING_MODEL_TAG = process.env.EMBEDDING_MODEL_TAG || 'gemini-embedding-001';
+export const EMBEDDING_MODEL_TAG = process.env.EMBEDDING_MODEL_TAG || `${EMBEDDING_MODEL_ID}/${EMBEDDING_DIMENSIONS}`;
 
-export type EmbeddingTaskType = 'RETRIEVAL_QUERY' | 'RETRIEVAL_DOCUMENT';
+export type EmbeddingKind = 'query' | 'document';
 
 /**
- * Generate a 768-dim embedding. Queries should pass 'RETRIEVAL_QUERY' and stored documents
- * 'RETRIEVAL_DOCUMENT'; task-typed vectors retrieve better but are not comparable with untyped ones.
+ * gemini-embedding-2 has no task_type parameter — task instructions are prepended to the input.
+ * Queries and documents must use the matching instruction format to share an embedding space.
+ */
+export const buildEmbeddingInput = (text: string, kind: EmbeddingKind): string =>
+  kind === 'query' ? `task: search result | query: ${text}` : `text: ${text}`;
+
+/**
+ * Generate an embedding with gemini-embedding-2 at EMBEDDING_DIMENSIONS (MRL, auto-normalized).
+ * Pass kind='query' for search queries and kind='document' (default) for stored content so the
+ * in-prompt task instructions line up.
  */
 export const generateEmbedding = async (
   text: string,
-  taskType?: EmbeddingTaskType,
+  kind: EmbeddingKind = 'document',
 ): Promise<number[]> => {
   const response = await genAIModels().embedContent({
-    model: EMBEDDING_MODEL,
-    contents: text,
-    config: { outputDimensionality: 768, ...(taskType ? { taskType } : {}) },
+    model: EMBEDDING_MODEL_ID,
+    contents: buildEmbeddingInput(text, kind),
+    config: { outputDimensionality: EMBEDDING_DIMENSIONS },
   });
 
   // Validate response structure

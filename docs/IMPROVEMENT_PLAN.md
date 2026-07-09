@@ -42,7 +42,7 @@ Five directions the maintainer asked for:
 5. **Image understanding + generation** — recreate characters/scenery/items as described *up to* the current chapter.
 
 **Constraints (hard):** local-first, hobby-scale, single PostgreSQL 18 + pgvector (port 5433), Gemini only
-(`gemini-2.5-flash` / `-flash-lite` / `gemini-embedding-001` / a Nano-Banana image model), pnpm monorepo, Express 5 +
+(`gemini-flash-latest` / `-flash-lite-latest` / `gemini-embedding-2` / a Nano-Banana image model), pnpm monorepo, Express 5 +
 TS backend, React 19 + Vite frontend, **vanilla CSS (no Tailwind)**, Python 3.12 ingestion via `uv`, Vitest backend
 tests, zero lint warnings, 1000-line file cap. Current branch `feat/docker-compose-cicd` already adds docker-compose +
 nginx + supervisor + CI + a seed dump. ROADMAP phases 1–5 are complete; phase 6 (graph/threads/annotations) is not
@@ -154,7 +154,7 @@ leak vectors to close (completeness critic):
 | `is_front_matter` column + shared `FRONT_MATTER_PATTERNS` Python constant | ingestion | spoiler-RAG + all three extraction consumers (read the column/constant, stop re-implementing ILIKE) |
 | `chapter_micro_summaries` (per-chapter) + populate the empty `chapter_embeddings` | spoiler-RAG | Theories classifier timeline **consumes these**, must NOT write into cumulative `chapter_summaries` |
 | `backfill_embeddings.py` (one script) | spoiler-RAG | ingestion's `embed_backfill` job invokes it |
-| Embedding `taskType` (`RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT`) + model-tag coexistence (`gemini-embedding-001/rd-768`) + `EMBEDDING_MODEL_TAG` cutover | spoiler-RAG | Theories embeds chunks via the shared helper |
+| Embedding in-prompt task instruction (`task: search result \| query:` / `text:`) + model-tag coexistence (`gemini-embedding-2/1536`) + `EMBEDDING_MODEL_TAG` cutover | spoiler-RAG | Theories embeds chunks via the shared helper |
 | Block re-chunking (>1600 chars → ~1200 + 1-paragraph overlap) **in the loader** | spoiler-RAG | ingestion's diff `content_hash` computed *after* chunking |
 | `services/archiveImages.ts` (Node, serve-time JSZip/CBZ byte resolution) | image-gen | `controllers/assets.ts`, image-gen `referenceImages.ts` |
 | `enrich_images.py` reads `kg_entities` instead of the regex heuristic | KG | replaces spoiler-RAG's duplicate swap |
@@ -485,7 +485,7 @@ behavior changes: no-`storyId` chat loses retrieval; omitted `currentChapter` �
 Structured-output generation → validated citations (drop hallucinated labels), `confidence`, `insufficient_context`;
 `rag_traces` table; **502 (not 200-apology)** on pipeline failure; frontend confidence badge + snippet tooltips.
 Loader-side block re-chunking (>1600→~1200 + overlap), `backfill_embeddings.py`, `EMBEDDING_MODEL_TAG` cutover; re-embed
-seed stories as `RETRIEVAL_DOCUMENT`.
+seed stories with the `text:` document instruction (migrated to `gemini-embedding-2/1536`, see §11).
 *DONE+:* citation-validation tests; eval no-regression; seed dump regenerated. → **Human checkpoint #4** (approve
 re-embedding + regenerating `db/seed.dump`).
 
@@ -646,7 +646,7 @@ reorder blast radius (it shifts every reader's `reading_progress` meaning and wi
 | `api/client.ts` + `api/types.ts` | M4 | every frontend surface |
 | `volume_number` + series ordering | M8 | KG/theories/image cross-volume scoping |
 | `rag.ts`/`db.ts` decomposition | M8 | KG graph arm, theories external-knowledge module |
-| embedding `taskType` + `backfill_embeddings.py` + `EMBEDDING_MODEL_TAG` | M9 | theories chunk embeddings, ingest `embed_backfill` |
+| embedding in-prompt task instruction + `backfill_embeddings.py` + `EMBEDDING_MODEL_TAG` (`gemini-embedding-2/1536`) | M9 | theories chunk embeddings, ingest `embed_backfill` |
 | block re-chunking (loader) | M9 | ingestion diff `content_hash` |
 | `chapter_micro_summaries` + `chapter_embeddings` populate | M10 | theories classifier timeline, Recap |
 | answer-guard | M10b | all chat modes |
@@ -693,29 +693,44 @@ afterward.
 
 ## 11. Model selection & pricing (evaluated 2026-07, verify at implementation time)
 
-The app uses `gemini-2.5-flash` (chat/summarize/extraction/enrich/judge), `gemini-2.5-flash-lite`
-(answer-guard, `generateJson` default), and `gemini-embedding-001` (768-dim). Verified pricing from
+The app uses `gemini-flash-lite-latest` for **both** the main and lite tiers (see the demo-stage note
+below), `gemini-embedding-2` (1536-dim MRL) for embeddings, and keeps the eval judge on
+`gemini-flash-latest` for grading reliability. Verified pricing from
 [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-api/docs/pricing):
 
 | Model | $/1M in | $/1M out | vs. what we use |
 |---|---|---|---|
-| `gemini-2.5-flash` (current main) | 0.30 | 2.50 | baseline |
-| `gemini-2.5-flash-lite` (current lite) | 0.10 | 0.40 | baseline |
-| `gemini-embedding-001` (current) | 0.15 | — | baseline |
+| `gemini-2.5-flash` (retired) | 0.30 | 2.50 | former baseline (now 404) |
+| `gemini-2.5-flash-lite` (retired) | 0.10 | 0.40 | former baseline (now 404) |
+| `gemini-embedding-001` (superseded) | 0.15 | — | former baseline |
 | `gemini-3.5-flash` | 1.50 | 9.00 | ~5× / 3.6× pricier |
 | `gemini-3.1-flash-lite` | 0.25 | 1.50 | cheaper than 2.5-flash on output; ~2.5× the 2.5-flash-lite |
 | `gemini-3.1-pro-preview` | 2.00 | 12.00 | premium |
-| `gemini-embedding-2` | 0.20 | — | +$0.05/1M, newer |
+| `gemini-embedding-2` (current) | 0.20 | — | +$0.05/1M vs 001; newer, MRL, multimodal |
 | `gemini-2.0-flash` | — | — | **shut down 2026-06-01 (unused here)** |
 
 **UPDATE (2026-07, forced): `gemini-2.5-flash` AND `gemini-2.5-flash-lite` were retired (both now
 404 at the API).** This broke every runtime LLM call. Migrated to the `-latest` aliases
 (`gemini-flash-latest`, `gemini-flash-lite-latest`), which track the current tier and **survive
-future retirements** (the whole reason this bit us). `gemini-embedding-001` is still active
-(embeddings unaffected). Model IDs are now centralized + env-overridable:
-`backend/src/config/models.ts` (`MAIN_MODEL`/`LITE_MODEL`/`EMBEDDING_MODEL_ID`) and
-`ingestion/models.py`, with every caller reading the same `GEMINI_MAIN_MODEL` / `GEMINI_LITE_MODEL`
-/ `GEMINI_EMBEDDING_MODEL` env vars — so a swap is one env change, no code edit.
+future retirements** (the whole reason this bit us). Model IDs are now centralized + env-overridable:
+`backend/src/config/models.ts` (`MAIN_MODEL`/`LITE_MODEL`/`EMBEDDING_MODEL_ID`/`EMBEDDING_DIMENSIONS`)
+and `ingestion/models.py`, with every caller reading the same `GEMINI_MAIN_MODEL` /
+`GEMINI_LITE_MODEL` / `GEMINI_EMBEDDING_MODEL` / `GEMINI_EMBEDDING_DIMS` env vars — so a swap is one
+env change, no code edit.
+
+**UPDATE (2026-07, done): migrated embeddings `gemini-embedding-001` (768-dim, `task_type`) →
+`gemini-embedding-2` (1536-dim MRL).** embedding-2 has **no `task_type` param** — the task
+instruction is prepended to the input text instead (`buildEmbeddingInput`/`embedding_input`: queries
+use `task: search result | query: …`, documents use `text: …`) — and it **auto-normalizes** truncated
+MRL dimensions (verified: L2 norm 1.0000 at 1536 vs 0.69 for 001 at the same truncation), so cosine
+works directly with no manual normalization. Chose **1536** dims: a recommended MRL size, higher
+fidelity than the legacy 768, and still under pgvector's 2000-dim HNSW ceiling (3072 would need
+`halfvec`). Migration `1700000000004_embedding_2.sql` drops the HNSW indexes, empties the
+`*_embeddings` tables, `ALTER`s the vector columns `768→1536`, and rebuilds the indexes; the retrieval
+tag moved `gemini-embedding-001` → `gemini-embedding-2/1536` (encodes model+dims, so old/new vectors
+never mix). Seed re-embedded via `backfill_embeddings.py` (111/111 blocks); eval re-run at 0 content
+leaks. Cost delta is +$0.05/1M on embeddings only (input-side, tiny) — earned by better retrieval and
+future multimodal/8192-token headroom.
 
 **Finding:** there is **no free like-for-like upgrade** — the pinned Gemini 3.x text tier costs 2–5×
 the (now-dead) 2.5 tier. So:
@@ -723,13 +738,21 @@ the (now-dead) 2.5 tier. So:
 1. **Default to the `-latest` flash/flash-lite aliases** (done). They stay on the cheapest current
    tier and don't 404 on the next retirement. Pin an explicit version via env only if reproducibility
    matters more than resilience.
+
+   **DEMO-STAGE (2026-07, done): the MAIN tier is temporarily set to `gemini-flash-lite-latest` too**
+   (chat/summarize/extraction/enrich all run on flash-lite) because full flash was too expensive at
+   demo volume. This is a one-line default in `backend/src/config/models.ts` + `ingestion/models.py`
+   (and mirrored in `graph/prompts.py`, `load_to_db.py`, `enrich_images.py`); restore the stronger
+   tier post-demo with `GEMINI_MAIN_MODEL=gemini-flash-latest`. The eval **judge** is deliberately
+   left on `gemini-flash-latest` (`GEMINI_JUDGE_MODEL` overrides it alone) — it's an offline grader
+   with no demo-runtime cost and it is the spoiler safety net, so it must not be weakened.
 2. **Model IDs are centralized** (done) — swapping is now an env var, eval-gated.
-3. **Optional, eval-gated upgrades** (measure with the M7 harness before switching):
+3. **Embeddings migrated to `gemini-embedding-2` (done)** — see the UPDATE above. Folded into the
+   M9 D6 backfill + tag-cutover machinery that was already built.
+4. **Optional, eval-gated text-tier upgrades** (measure with the M7 harness before switching):
    `gemini-3.1-flash-lite` for the main tier (better model, cheaper output than 2.5-flash, but pricier
-   than 2.5-flash-lite for the guard/judge lite work — so cost impact is mixed); `gemini-embedding-2`
-   (+$0.05/1M) folded into the M9 D6 re-embed if we want the newest embeddings (requires the same
-   backfill + tag cutover already built).
-4. Image generation already targets the current Nano-Banana tier (image-gen pillar, §M16/M17).
+   than 2.5-flash-lite for the guard/judge lite work — so cost impact is mixed).
+5. Image generation already targets the current Nano-Banana tier (image-gen pillar, §M16/M17).
 
 Non-goal: chasing the newest model for its own name — the eval harness (spoiler-leak + answer
 quality) is the gate for any model change, since a pricier model must earn its cost.

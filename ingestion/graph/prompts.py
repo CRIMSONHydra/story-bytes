@@ -9,8 +9,9 @@ import os
 PROMPT_VERSION = 1
 
 # Centralized via the GEMINI_MAIN_MODEL env var (see ingestion/models.py). gemini-2.5-flash was
-# retired (404); default tracks the current flash tier.
-GRAPH_MODEL = os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-latest")
+# retired (404). DEMO-STAGE DEFAULT: flash-lite (cost); set GEMINI_MAIN_MODEL=gemini-flash-latest
+# to restore the stronger tier post-demo.
+GRAPH_MODEL = os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-lite-latest")
 
 # ---------------------------------------------------------------------------
 # Per-chapter graph extraction (chapter-local: only sees text up to this chapter)

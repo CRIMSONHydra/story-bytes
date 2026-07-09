@@ -16,7 +16,10 @@ from google import genai
 from google.genai import types as genai_types
 
 import os
-JUDGE_MODEL = os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-latest")
+# Intentionally NOT downgraded to flash-lite with the rest of the demo-stage models: the judge is an
+# offline grader (runs only during eval/CI, no demo-runtime cost) and it IS the spoiler safety net, so
+# it stays on the stronger flash tier for grading reliability. GEMINI_JUDGE_MODEL overrides it alone.
+JUDGE_MODEL = os.getenv("GEMINI_JUDGE_MODEL", "gemini-flash-latest")
 
 _JUDGE_PROMPT = """You are grading a spoiler-safety test for a story-reading assistant.
 

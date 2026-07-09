@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS chapter_embeddings (
     chapter_id      UUID PRIMARY KEY REFERENCES chapters(chapter_id) ON DELETE CASCADE,
     model           TEXT NOT NULL,
     dimensions      INT NOT NULL,
-    vector          vector(768),
+    vector          vector(1536),
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS block_embeddings (
     block_id        UUID REFERENCES chapter_blocks(block_id) ON DELETE CASCADE,
     model           TEXT NOT NULL,
     dimensions      INT NOT NULL,
-    vector          vector(768),
+    vector          vector(1536),
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (block_id, model)
 );
@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS knowledge_embeddings (
     knowledge_id    UUID REFERENCES external_knowledge(knowledge_id) ON DELETE CASCADE,
     model           TEXT NOT NULL,
     dimensions      INT NOT NULL,
-    vector          vector(768),
+    vector          vector(1536),
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (knowledge_id, model)
 );
@@ -191,7 +191,7 @@ CREATE TABLE IF NOT EXISTS asset_embeddings (
     asset_id        UUID REFERENCES assets(asset_id) ON DELETE CASCADE,
     model           TEXT NOT NULL,
     dimensions      INT NOT NULL,
-    vector          vector(768),
+    vector          vector(1536),
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (asset_id, model)
 );

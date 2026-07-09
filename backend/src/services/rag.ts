@@ -4,7 +4,7 @@
  * Supports multiple chat modes: recall, foreshadowing, and theory.
  */
 
-import { getModel, generateEmbedding, EMBEDDING_MODEL_TAG } from './llm';
+import { getModel, generateEmbedding } from './llm';
 import { MAIN_MODEL } from '../config/models';
 import {
   findSimilarBlocks,
@@ -232,10 +232,8 @@ export const answerQuery = async (
     // Auto-detect foreshadowing mode from query if mode is recall
     const effectiveMode = mode === 'recall' && detectForeshadowingIntent(query) ? 'foreshadowing' : mode;
 
-    // Step 1: Generate embedding. Use RETRIEVAL_QUERY only when the task-typed document tag is
-    // active (post-backfill) so query and stored vectors stay comparable; default stays untyped.
-    const queryTaskType = EMBEDDING_MODEL_TAG !== 'gemini-embedding-001' ? 'RETRIEVAL_QUERY' as const : undefined;
-    const embedding = await generateEmbedding(query, queryTaskType);
+    // Step 1: Generate the query embedding (gemini-embedding-2 uses the in-prompt query instruction).
+    const embedding = await generateEmbedding(query, 'query');
 
     // Step 1.7: GraphRAG — link the query to known entities (spoiler-visible aliases only), expand
     // the keyword arm with those aliases ("Dead End" also retrieves "Ruijerd" passages), and build a
