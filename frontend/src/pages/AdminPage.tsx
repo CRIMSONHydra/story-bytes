@@ -1,7 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { API_BASE } from '../config';
+import { apiGet } from '../api/client';
 import { submitIngest, getJob, isTerminal, type JobEvent } from '../api/jobs';
+
+interface UsageRow {
+  model: string;
+  context: string;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  priced: boolean;
+}
+interface UsageSummary {
+  rows: UsageRow[];
+  totalCostUsd: number;
+  totalCalls: number;
+}
 
 const JOB_STORAGE_KEY = 'story-bytes.lastIngestJob';
 
@@ -56,6 +72,7 @@ export default function AdminPage() {
   const [file, setFile] = useState<File | null>(null);
   const [selectedSeries, setSelectedSeries] = useState('');
   const [expandedSeries, setExpandedSeries] = useState<string | null>(null);
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchStories = () => {
@@ -67,6 +84,10 @@ export default function AdminPage() {
   };
 
   useEffect(fetchStories, []);
+
+  useEffect(() => {
+    apiGet<UsageSummary>('/api/admin/usage').then(setUsage).catch(() => setUsage(null));
+  }, []);
 
   const existingSeries = [...new Set(stories.map(s => s.series_title).filter(Boolean))] as string[];
 
@@ -176,6 +197,30 @@ export default function AdminPage() {
           background (poll shown above).
         </p>
       </div>
+
+      {usage && usage.rows.length > 0 && (
+        <div className="admin-usage">
+          <h3>LLM Usage &amp; Cost <span className="usage-total">${usage.totalCostUsd.toFixed(4)} · {usage.totalCalls} calls</span></h3>
+          <table className="usage-table">
+            <thead>
+              <tr><th>Model</th><th>Context</th><th>Calls</th><th>In</th><th>Out</th><th>Cost</th></tr>
+            </thead>
+            <tbody>
+              {usage.rows.map((r, i) => (
+                <tr key={i}>
+                  <td>{r.model}{!r.priced && ' *'}</td>
+                  <td>{r.context}</td>
+                  <td>{r.calls}</td>
+                  <td>{r.inputTokens.toLocaleString()}</td>
+                  <td>{r.outputTokens.toLocaleString()}</td>
+                  <td>${r.costUsd.toFixed(4)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {usage.rows.some((r) => !r.priced) && <p className="usage-note">* model not in the pricing table — cost shown as $0.</p>}
+        </div>
+      )}
 
       <div className="admin-stories">
         <h3>Stories ({stories.length})</h3>

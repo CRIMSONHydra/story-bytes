@@ -460,3 +460,19 @@ CREATE TABLE IF NOT EXISTS job_events (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_job_events_job ON job_events (job_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- LLM usage accounting (migration 1700000000007). Cost is computed at read time.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS llm_usage (
+    usage_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    context       TEXT NOT NULL,
+    model         TEXT NOT NULL,
+    input_tokens  INT NOT NULL DEFAULT 0,
+    output_tokens INT NOT NULL DEFAULT 0,
+    story_id      UUID REFERENCES stories(story_id) ON DELETE SET NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_llm_usage_created ON llm_usage (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_usage_model ON llm_usage (model);

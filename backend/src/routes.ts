@@ -15,6 +15,7 @@ import { handleGetProgress, handleUpdateProgress } from './controllers/progress'
 import { handleAdminGetStories, handleAdminDeleteStory, handleAdminIngest, handleGetSeries, handleGetTrace } from './controllers/admin';
 import { handleListUsers, handleGetUser, handleCreateUser, handleUpdateUser, handleDeleteUser } from './controllers/users';
 import { handleGetJob, handleListJobs, handleCancelJob } from './controllers/jobs';
+import { handleGetUsage } from './controllers/usage';
 import { upload } from './middleware/upload';
 import { adminAuth } from './middleware/adminAuth';
 import { chatLimiter, ingestLimiter } from './middleware/rateLimits';
@@ -81,5 +82,6 @@ router.get('/admin/stories', adminAuth, handleAdminGetStories);
 router.delete('/admin/stories/:storyId', adminAuth, handleAdminDeleteStory);
 router.post('/admin/ingest', adminAuth, ingestLimiter, upload.single('file'), handleAdminIngest);
 router.get('/admin/traces/:traceId', adminAuth, handleGetTrace);
+router.get('/admin/usage', adminAuth, handleGetUsage);
 
 export default router;

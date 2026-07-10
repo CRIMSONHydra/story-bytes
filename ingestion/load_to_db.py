@@ -405,6 +405,7 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
     embed_start = time.time()
     embedded_count = 0
     skipped_count = 0
+    total_embed_chars = 0
 
     for i in range(0, total, EMBEDDING_BATCH_SIZE):
         batch = pending_embeddings[i:i + EMBEDDING_BATCH_SIZE]
@@ -427,6 +428,7 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
                         (item["block_id"], EMBEDDING_MODEL_TAG, EMBEDDING_DIMENSIONS, str(single[0]))
                     )
                     embedded_count += 1
+                    total_embed_chars += len(item["text"])
                 except Exception as inner_e:
                     logging.error(f"  Skipping block {item['block_id']}: {inner_e}")
                     skipped_count += 1
@@ -441,6 +443,7 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
                 (item["block_id"], EMBEDDING_MODEL_TAG, EMBEDDING_DIMENSIONS, str(emb))
             )
         embedded_count += len(batch)
+        total_embed_chars += sum(len(t) for t in texts)
 
         elapsed = time.time() - embed_start
         logging.info(f"  Embedded {min(i + EMBEDDING_BATCH_SIZE, total)}/{total} blocks (batch {batch_num}/{num_batches}, {_format_duration(elapsed)} elapsed)")
@@ -449,6 +452,17 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
     total_elapsed = time.time() - ingest_start
     logging.info(f"Embedding complete: {embedded_count} embedded, {skipped_count} skipped ({_format_duration(embed_elapsed)})")
     logging.info(f"Total ingestion time: {_format_duration(total_elapsed)}")
+
+    # M6: record ingestion embedding usage (fire-and-forget accounting; tokens ~ chars/4).
+    if embedded_count > 0:
+        try:
+            cursor.execute(
+                """INSERT INTO llm_usage (context, model, input_tokens, output_tokens, story_id)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                ("ingest-embedding", EMBEDDING_MODEL, total_embed_chars // 4, 0, story_id),
+            )
+        except Exception as e:  # noqa: BLE001 - accounting must never fail ingestion
+            logging.warning(f"Could not record embedding usage: {e}")
 
 def _resolve_image_path(image_src: str) -> Optional[Path]:
     """Attempt to resolve an image source path to a local file."""

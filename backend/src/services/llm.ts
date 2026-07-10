@@ -6,6 +6,23 @@
 import { GoogleGenAI } from '@google/genai';
 import { env } from '../config/env';
 import { MAIN_MODEL, LITE_MODEL, EMBEDDING_MODEL_ID, EMBEDDING_DIMENSIONS } from '../config/models';
+import { recordUsage } from './usage';
+
+/** Extract token counts from a Gemini response and record them (fire-and-forget). */
+const track = (
+  context: string,
+  model: string,
+  usageMetadata: { promptTokenCount?: number; candidatesTokenCount?: number } | undefined,
+  storyId?: string,
+): void => {
+  recordUsage({
+    context,
+    model,
+    inputTokens: usageMetadata?.promptTokenCount ?? 0,
+    outputTokens: usageMetadata?.candidatesTokenCount ?? 0,
+    storyId,
+  });
+};
 
 // Lazily initialize the Google GenAI client. Deferring construction until first use avoids the
 // SDK's "API key should be set" warning firing at import time in environments where Gemini is never
@@ -34,12 +51,16 @@ export const getModel = () => {
      * @param prompt - The text prompt to send to the model
      * @returns Promise resolving to response object with text() method
      */
-    generateContent: async (prompt: string, options?: { temperature?: number }) => {
+    generateContent: async (
+      prompt: string,
+      options?: { temperature?: number; usageContext?: string; storyId?: string },
+    ) => {
       const response = await genAIModels().generateContent({
         model: MAIN_MODEL,
         contents: prompt,
         config: options?.temperature !== undefined ? { temperature: options.temperature } : undefined,
       });
+      track(options?.usageContext ?? 'generate', MAIN_MODEL, response.usageMetadata, options?.storyId);
       return {
         response: {
           text: () => response.text || ''
@@ -60,16 +81,18 @@ export const getModel = () => {
  */
 export const generateJson = async (
   prompt: string,
-  options?: { model?: string; systemInstruction?: string },
+  options?: { model?: string; systemInstruction?: string; usageContext?: string; storyId?: string },
 ): Promise<Record<string, unknown> | null> => {
+  const model = options?.model ?? LITE_MODEL;
   const response = await genAIModels().generateContent({
-    model: options?.model ?? LITE_MODEL,
+    model,
     contents: prompt,
     config: {
       responseMimeType: 'application/json',
       ...(options?.systemInstruction ? { systemInstruction: options.systemInstruction } : {}),
     },
   });
+  track(options?.usageContext ?? 'json', model, response.usageMetadata, options?.storyId);
   return parseJsonResponse(response.text || '');
 };
 
@@ -134,6 +157,14 @@ export const generateEmbedding = async (
   if (!response.embeddings || !response.embeddings[0] || !response.embeddings[0].values) {
     throw new Error('Failed to generate embedding: invalid response structure');
   }
+
+  const meta = (response as { metadata?: { billableCharacterCount?: number } }).metadata;
+  recordUsage({
+    context: kind === 'query' ? 'embedding-query' : 'embedding-document',
+    model: EMBEDDING_MODEL_ID,
+    inputTokens: meta?.billableCharacterCount ?? 0,
+    outputTokens: 0,
+  });
 
   return response.embeddings[0].values;
 };
