@@ -1,5 +1,7 @@
 """Tests for load_to_db.split_into_chunks (M9 D6 block re-chunking)."""
 
+from itertools import pairwise
+
 from ingestion.load_to_db import split_into_chunks
 
 
@@ -26,7 +28,7 @@ class TestSplitIntoChunks:
             for piece in chunk.split("\n\n"):
                 assert piece in paras
         # One-paragraph overlap: the last paragraph of a chunk starts the next.
-        for a, b in zip(chunks, chunks[1:]):
+        for a, b in pairwise(chunks):
             assert a.split("\n\n")[-1] == b.split("\n\n")[0]
 
     def test_all_paragraphs_preserved(self):

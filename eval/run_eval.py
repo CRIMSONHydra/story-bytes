@@ -202,8 +202,10 @@ def main():
             print(f"   - [{r['suite']}] ch{r['boundary']}: {r['reason']}")
     print(f"\n  report: {out_path}")
     print("==================================================")
-    # Hard gate: genuine CONTENT leaks fail; judge-infra errors do not (they're reported for triage).
-    sys.exit(1 if leaks else 0)
+    # Hard gate: genuine CONTENT leaks fail; a fully ungradeable run (e.g. total judge outage) is
+    # invalid and must not pass silently. Judge-infra errors on some probes are still reported for
+    # triage but don't fail the run as long as something was actually graded.
+    sys.exit(1 if leaks or gradeable == 0 else 0)
 
 
 if __name__ == "__main__":

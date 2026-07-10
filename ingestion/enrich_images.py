@@ -23,6 +23,13 @@ from google import genai
 from google.genai import types as genai_types
 from dotenv import load_dotenv
 
+# IMAGE_MODEL is centralized in ingestion/models.py. Dual import supports the package run mode
+# (pytest / `python -m`) and the standalone CLI (`uv run python ingestion/enrich_images.py`).
+try:
+    from .models import IMAGE_MODEL  # ingestion.enrich_images
+except ImportError:  # pragma: no cover - standalone CLI
+    from models import IMAGE_MODEL
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -231,8 +238,7 @@ def enrich_image(
 
     try:
         response = client.models.generate_content(
-            # DEMO-STAGE DEFAULT: flash-lite (cost); set GEMINI_MAIN_MODEL=gemini-flash-latest post-demo.
-            model=os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-lite-latest"),
+            model=IMAGE_MODEL,
             contents=[genai_types.Content(parts=parts)],
         )
         text = (response.text or "").strip()

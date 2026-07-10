@@ -93,7 +93,7 @@ def backfill_story(conn, client: genai.Client, story_id: str, model_tag: str, ba
                 logging.error(f"Embedding batch failed for chapter {chapter_id}: {e}")
                 raise
             with conn.cursor() as cur:
-                for (block_id, _), vector in zip(batch, vectors):
+                for (block_id, _), vector in zip(batch, vectors, strict=True):
                     cur.execute(
                         """
                         INSERT INTO block_embeddings (block_id, model, dimensions, vector)

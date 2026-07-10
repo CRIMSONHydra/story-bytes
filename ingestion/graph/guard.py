@@ -15,9 +15,13 @@ from typing import Optional
 from google import genai
 from google.genai import types as genai_types
 
-import os
-# Centralized via GEMINI_LITE_MODEL (see ingestion/models.py); gemini-2.5-flash-lite was retired.
-GUARD_MODEL = os.getenv("GEMINI_LITE_MODEL", "gemini-flash-lite-latest")
+# GUARD_MODEL is centralized in ingestion/models.py (single source; GEMINI_LITE_MODEL override +
+# demo-stage default live there). Dual import supports the package run mode (pytest / `python -m`)
+# and the standalone CLI mode (importer puts `ingestion/` on sys.path before importing this module).
+try:
+    from ..models import GUARD_MODEL  # ingestion.graph.guard
+except ImportError:  # pragma: no cover - standalone CLI
+    from models import GUARD_MODEL
 
 _GUARD_PROMPT = """You are a spoiler-safety guard. You are given a SETUP HINT that will be shown to a
 reader, and a PAYOFF (a future spoiler the reader must NOT learn yet).

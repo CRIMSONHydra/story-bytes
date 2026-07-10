@@ -4,14 +4,16 @@ PROMPT_VERSION is stored on kg_extraction_runs / kg_foreshadow_links so that bum
 prompt invalidates prior runs and lets --rebuild re-extract deterministically.
 """
 
-import os
-
 PROMPT_VERSION = 1
 
-# Centralized via the GEMINI_MAIN_MODEL env var (see ingestion/models.py). gemini-2.5-flash was
-# retired (404). DEMO-STAGE DEFAULT: flash-lite (cost); set GEMINI_MAIN_MODEL=gemini-flash-latest
-# to restore the stronger tier post-demo.
-GRAPH_MODEL = os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-lite-latest")
+# GRAPH_MODEL is centralized in ingestion/models.py (single source; the demo-stage default and the
+# GEMINI_MAIN_MODEL override both live there). The dual import supports both run modes: as a package
+# (pytest / `python -m`) and as a standalone CLI (`uv run python ingestion/graph/extract_graph.py`,
+# where `ingestion/` — not the repo root — is on sys.path).
+try:
+    from ..models import GRAPH_MODEL  # ingestion.graph.prompts
+except ImportError:  # pragma: no cover - standalone CLI
+    from models import GRAPH_MODEL
 
 # ---------------------------------------------------------------------------
 # Per-chapter graph extraction (chapter-local: only sees text up to this chapter)

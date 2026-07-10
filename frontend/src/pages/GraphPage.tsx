@@ -239,6 +239,7 @@ export default function GraphPage() {
           <input
             type="text"
             className="graph-search-input"
+            aria-label="Search characters, factions"
             placeholder="Search characters, factions..."
             value={searchInput}
             onChange={e => handleSearchChange(e.target.value)}

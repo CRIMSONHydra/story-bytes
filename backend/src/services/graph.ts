@@ -356,10 +356,14 @@ export const getEntityDetail = async (
        WHERE entity_id = $1 AND chapter_order <= $2 ORDER BY chapter_order`,
       [entityId, maxChapterOrder]),
     pool.query(
+      // Gate BOTH endpoints on first_chapter_order (like getStoryGraph/getEgoNetwork): a relationship
+      // to an entity that isn't revealed yet is itself a spoiler, even when the queried entity is visible.
       `SELECT r.rel_id, r.source_entity_id, r.target_entity_id, r.rel_type, r.description,
               r.valid_from_chapter AS since_chapter,
               CASE WHEN r.valid_to_chapter <= $2 THEN r.valid_to_chapter ELSE NULL END AS until_chapter
        FROM kg_relationships r
+       JOIN kg_entities se ON se.entity_id = r.source_entity_id AND se.first_chapter_order <= $2
+       JOIN kg_entities te ON te.entity_id = r.target_entity_id AND te.first_chapter_order <= $2
        WHERE (r.source_entity_id = $1 OR r.target_entity_id = $1) AND r.valid_from_chapter <= $2`,
       [entityId, maxChapterOrder]),
     pool.query(

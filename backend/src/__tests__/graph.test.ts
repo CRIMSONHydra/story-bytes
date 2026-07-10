@@ -127,4 +127,29 @@ describe('graph service — foreshadowing spoiler safety', () => {
     expect(detail?.entity.name).toBe('Rudeus');
     expect(detail?.entity.aliases).toEqual(['the boy']);
   });
+
+  it('getEntityDetail edge query gates BOTH relationship endpoints by the boundary (spoiler safety)', async () => {
+    // Regression guard: a relationship to an entity revealed AHEAD of the reader is itself a spoiler,
+    // even when the queried entity is visible. The edge sub-query must JOIN both endpoints on
+    // first_chapter_order (matching getStoryGraph/getEgoNetwork), not just filter the queried entity.
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ entity_id: 'e1', entity_type: 'character', canonical_name: 'Rudeus',
+        description: null, first_chapter_order: 6, story_id: 'story-1' }] } as never)
+      .mockResolvedValueOnce({ rows: [] } as never)   // aliases
+      .mockResolvedValueOnce({ rows: [] } as never)   // states
+      .mockResolvedValueOnce({ rows: [] } as never)   // edges
+      .mockResolvedValueOnce({ rows: [] } as never)   // events
+      .mockResolvedValueOnce({ rows: [] } as never);  // evidence
+    await getEntityDetail('e1', 10);
+    // Promise.all order: [aliases(1), states(2), edges(3), events(4), evidence(5)] after the entity query(0).
+    const edgeSql = mockQuery.mock.calls[3][0] as string;
+    expect(edgeSql).toContain('se.first_chapter_order <= $2');
+    expect(edgeSql).toContain('te.first_chapter_order <= $2');
+    expect(edgeSql).not.toContain('payoff'); // relationships carry no payoff column anyway
+  });
+
+  it('propagates the error when the database query rejects', async () => {
+    mockQuery.mockRejectedValueOnce(new Error('connection reset'));
+    await expect(getStoryGraph('story-1', 12)).rejects.toThrow('connection reset');
+  });
 });
