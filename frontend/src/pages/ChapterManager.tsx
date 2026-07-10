@@ -43,7 +43,7 @@ export default function ChapterManager() {
   const remove = async (c: AdminChapter) => {
     if (!confirm(`Delete "${c.title ?? 'Untitled'}"? Its blocks and embeddings are removed.`)) return;
     const res = await deleteChapter(c.chapterId).catch(() => null);
-    if (res) setStatus(`Deleted (${res.annotationCount} annotation(s) were attached)`);
+    setStatus(res ? `Deleted (${res.annotationCount} annotation(s) were attached)` : 'Delete failed');
     refresh();
   };
 
@@ -58,7 +58,11 @@ export default function ChapterManager() {
 
   const runEstimate = async () => {
     if (!storyId || !pasteText.trim()) return;
-    setEstimate(await estimateAppend(storyId, pasteText).catch(() => null));
+    try {
+      setEstimate(await estimateAppend(storyId, pasteText));
+    } catch {
+      setStatus('Estimate failed');
+    }
   };
 
   const submitAppend = async () => {

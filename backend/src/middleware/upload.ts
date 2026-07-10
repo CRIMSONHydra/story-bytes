@@ -3,7 +3,9 @@ import { ApiError } from './errors';
 
 const UPLOAD_DIR = '/tmp/story-bytes-uploads';
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
-const ALLOWED = ['.epub', '.cbz', '.cbr', '.txt', '.md', '.pdf'];
+/** Accepted upload extensions — the single source of truth (also imported by the ingest controller). */
+export const ALLOWED_EXTENSIONS = ['.epub', '.cbz', '.cbr', '.txt', '.md', '.pdf'];
+const ALLOWED = ALLOWED_EXTENSIONS;
 const ACCEPTED = ALLOWED.join(', ');
 
 export const upload = multer({

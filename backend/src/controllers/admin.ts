@@ -9,6 +9,7 @@ import { getProjectRoot } from './assets';
 import { asyncHandler, badRequest, invalidId, notFound } from '../middleware/errors';
 import { enqueueIngest } from '../jobs/queue';
 import { createIngestJob, findReusableJobBySha } from '../jobs/progress';
+import { ALLOWED_EXTENSIONS } from '../middleware/upload';
 
 const uuidSchema = z.string().uuid();
 
@@ -38,7 +39,7 @@ export const handleAdminDeleteStory = asyncHandler(async (req: Request, res: Res
   res.status(204).send();
 });
 
-const ALLOWED_EXT = ['.epub', '.cbz', '.cbr', '.txt', '.md', '.pdf'];
+const ALLOWED_EXT = ALLOWED_EXTENSIONS; // single source of truth (middleware/upload.ts)
 
 /**
  * M5: accept an upload, stage it durably, and ENQUEUE the ingest — returns 202 + jobId immediately

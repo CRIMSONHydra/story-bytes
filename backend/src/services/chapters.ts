@@ -116,48 +116,60 @@ export interface AppendResult {
   blocks: number;
 }
 
-/** Append a pasted chapter: chunk + embed only this chapter, then invalidate summaries. */
+/**
+ * Append a pasted chapter: chunk + embed only this chapter, then invalidate summaries. Runs in a
+ * transaction so a mid-loop embedding failure rolls back the chapter/blocks (no partially-embedded
+ * chapter, no stale summaries). The order is assigned atomically via a subquery inside the INSERT —
+ * no read-then-write TOCTOU gap — and the unique (story_id, chapter_order) index is the final
+ * backstop against a concurrent double-append.
+ */
 export const appendChapter = async (
   storyId: string,
   title: string,
   text: string,
   isFrontMatter = false,
 ): Promise<AppendResult> => {
-  const orderRow = await pool.query<{ next: number }>(
-    'SELECT COALESCE(MAX(chapter_order), 0) + 1 AS next FROM chapters WHERE story_id = $1',
-    [storyId],
-  );
-  const order = Number(orderRow.rows[0].next);
   const contentHash = createHash('sha256').update(`${title}\n${text}`).digest('hex');
-
-  const chapterRow = await pool.query<{ chapter_id: string }>(
-    `INSERT INTO chapters (story_id, chapter_order, title, aggregated_text, content_hash, is_front_matter)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING chapter_id`,
-    [storyId, order, title, text, contentHash, isFrontMatter],
-  );
-  const chapterId = chapterRow.rows[0].chapter_id;
-
   const chunks = splitIntoChunks(text);
-  let blockIndex = 0;
-  for (const chunk of chunks) {
-    const blockRow = await pool.query<{ block_id: string }>(
-      `INSERT INTO chapter_blocks (chapter_id, block_index, block_type, text_content)
-       VALUES ($1, $2, 'text', $3) RETURNING block_id`,
-      [chapterId, blockIndex++, chunk],
-    );
-    if (chunk.trim().length > 10) {
-      const vector = await generateEmbedding(chunk, 'document'); // records embedding usage
-      await pool.query(
-        `INSERT INTO block_embeddings (block_id, model, dimensions, vector)
-         VALUES ($1, $2, $3, $4::vector)
-         ON CONFLICT (block_id, model) DO UPDATE SET vector = EXCLUDED.vector`,
-        [blockRow.rows[0].block_id, EMBEDDING_MODEL_TAG, EMBEDDING_DIMENSIONS, vectorLiteral(vector)],
-      );
-    }
-  }
 
-  await invalidateSummaries(storyId);
-  return { chapterId, order, blocks: chunks.length };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const chapterRow = await client.query<{ chapter_id: string; chapter_order: number }>(
+      `INSERT INTO chapters (story_id, chapter_order, title, aggregated_text, content_hash, is_front_matter)
+       VALUES ($1, (SELECT COALESCE(MAX(chapter_order), 0) + 1 FROM chapters WHERE story_id = $1), $2, $3, $4, $5)
+       RETURNING chapter_id, chapter_order`,
+      [storyId, title, text, contentHash, isFrontMatter],
+    );
+    const { chapter_id: chapterId, chapter_order: order } = chapterRow.rows[0];
+
+    let blockIndex = 0;
+    for (const chunk of chunks) {
+      const blockRow = await client.query<{ block_id: string }>(
+        `INSERT INTO chapter_blocks (chapter_id, block_index, block_type, text_content)
+         VALUES ($1, $2, 'text', $3) RETURNING block_id`,
+        [chapterId, blockIndex++, chunk],
+      );
+      if (chunk.trim().length > 10) {
+        const vector = await generateEmbedding(chunk, 'document'); // records embedding usage
+        await client.query(
+          `INSERT INTO block_embeddings (block_id, model, dimensions, vector)
+           VALUES ($1, $2, $3, $4::vector)
+           ON CONFLICT (block_id, model) DO UPDATE SET vector = EXCLUDED.vector`,
+          [blockRow.rows[0].block_id, EMBEDDING_MODEL_TAG, EMBEDDING_DIMENSIONS, vectorLiteral(vector)],
+        );
+      }
+    }
+
+    await client.query('DELETE FROM chapter_summaries WHERE story_id = $1', [storyId]);
+    await client.query('COMMIT');
+    return { chapterId, order: Number(order), blocks: chunks.length };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 /** Read-time cost estimate for pasting `text` (embedding only), from pricing.ts. */
