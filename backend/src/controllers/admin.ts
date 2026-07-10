@@ -1,102 +1,46 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { unlink, copyFile, mkdir, rm } from 'fs/promises';
 import { resolve, basename } from 'path';
 import { getAdminStories, deleteStory, getSeriesTitleForStory, getStoryIdsBySeriesTitle, getDistinctSeries } from '../services/admin';
 import { getRagTrace } from '../services/db';
 import { getProjectRoot } from './assets';
+import { asyncHandler, badRequest, invalidId, notFound } from '../middleware/errors';
+import { logger } from '../services/logger';
+import { runPythonJson } from '../services/pythonRunner';
 
 const uuidSchema = z.string().uuid();
 
 /** M9: inspect a RAG trace by id (debugging / eval). */
-export const handleGetTrace = async (req: Request, res: Response) => {
+export const handleGetTrace = asyncHandler(async (req: Request, res: Response) => {
   const parsed = uuidSchema.safeParse(req.params.traceId);
-  if (!parsed.success) {
-    res.status(400).json({ error: { code: 'INVALID_ID', message: 'Invalid trace ID' } });
-    return;
-  }
-  try {
-    const trace = await getRagTrace(parsed.data);
-    if (!trace) {
-      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Trace not found' } });
-      return;
-    }
-    res.json(trace);
-  } catch (error) {
-    console.error('Trace lookup error:', error);
-    res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to load trace' } });
-  }
-};
+  if (!parsed.success) throw invalidId('Invalid trace ID');
+  const trace = await getRagTrace(parsed.data);
+  if (!trace) throw notFound('Trace not found');
+  res.json(trace);
+});
 
-const PYTHON_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+export const handleGetSeries = asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await getDistinctSeries());
+});
 
-function runPython(cwd: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn('uv', ['run', 'python', ...args], {
-      cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: PYTHON_TIMEOUT_MS,
-    });
-    let stdout = '';
-    let stderr = '';
-    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-    proc.on('close', code => {
-      if (code === 0) resolve(stdout);
-      else reject(new Error(`Process exited ${code}: ${stderr.slice(-500)}`));
-    });
-    proc.on('error', reject);
-  });
-}
+export const handleAdminGetStories = asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await getAdminStories());
+});
 
-export const handleGetSeries = async (_req: Request, res: Response) => {
-  try {
-    const series = await getDistinctSeries();
-    res.json(series);
-  } catch (error) {
-    console.error('Series list error:', error);
-    res.status(500).json({ error: 'Failed to fetch series' });
-  }
-};
-
-export const handleAdminGetStories = async (_req: Request, res: Response) => {
-  try {
-    const stories = await getAdminStories();
-    res.json(stories);
-  } catch (error) {
-    console.error('Admin stories error:', error);
-    res.status(500).json({ error: 'Failed to fetch stories' });
-  }
-};
-
-export const handleAdminDeleteStory = async (req: Request, res: Response) => {
+export const handleAdminDeleteStory = asyncHandler(async (req: Request, res: Response) => {
   const parsed = uuidSchema.safeParse(req.params.storyId);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid story ID' });
-    return;
-  }
+  if (!parsed.success) throw invalidId('Invalid story ID');
 
-  try {
-    const deleted = await deleteStory(parsed.data);
-    if (deleted) {
-      res.status(204).send();
-    } else {
-      res.status(404).json({ error: 'Story not found' });
-    }
-  } catch (error) {
-    console.error('Admin delete error:', error);
-    res.status(500).json({ error: 'Failed to delete story' });
-  }
-};
+  const deleted = await deleteStory(parsed.data);
+  if (!deleted) throw notFound('Story not found');
+  res.status(204).send();
+});
 
-export const handleAdminIngest = async (req: Request, res: Response) => {
+export const handleAdminIngest = asyncHandler(async (req: Request, res: Response) => {
   const file = req.file;
-  if (!file) {
-    res.status(400).json({ error: 'No file uploaded. Accepted: .epub, .cbz, .cbr' });
-    return;
-  }
+  if (!file) throw badRequest('No file uploaded. Accepted: .epub, .cbz, .cbr');
 
   const projectRoot = getProjectRoot();
   const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
@@ -124,58 +68,54 @@ export const handleAdminIngest = async (req: Request, res: Response) => {
     } else if (ext === '.cbz' || ext === '.cbr') {
       extractScript = ['ingestion/comic/extract_comic.py', workFilePath, '-o', workDir, '-v', '--ocr'];
     } else {
-      res.status(400).json({ error: `Unsupported file type: ${ext}` });
-      return;
+      throw badRequest(`Unsupported file type: ${ext}`);
     }
 
-    await runPython(projectRoot, extractScript);
+    await runPythonJson(projectRoot, extractScript);
 
     // Find the output JSON in the work dir
     const jsonStem = fileName.replace(/\.[^.]+$/, '');
     const outputJson = resolve(workDir, `${jsonStem}.json`);
 
-    // Step 2: Load + tag images
+    // Step 2: Load + tag images. story_id comes from the loader's terminal `result` JSONL event
+    // (M3 stdout contract) — no more regex-scraping the log text.
     const seriesTitle = req.body?.seriesTitle as string | undefined;
     const loadArgs = ['ingestion/load_to_db.py', outputJson, '--tag-images'];
     if (seriesTitle) loadArgs.push('--series-title', seriesTitle);
-    const loadOutput = await runPython(projectRoot, loadArgs);
-
-    // Extract story_id from load output
-    const storyIdMatch = loadOutput.match(/Story\s+([0-9a-f-]{36})/i)
-      || loadOutput.match(/story_id.*?([0-9a-f-]{36})/i);
+    const load = await runPythonJson(projectRoot, loadArgs);
+    const storyId = typeof load.result?.story_id === 'string' ? load.result.story_id : null;
 
     // Step 3: Enrich images with story context
-    if (storyIdMatch) {
+    if (storyId) {
       try {
-        await runPython(projectRoot, ['ingestion/enrich_images.py', '--story-id', storyIdMatch[1]]);
+        await runPythonJson(projectRoot, ['ingestion/enrich_images.py', '--story-id', storyId]);
 
         // Re-enrich entire series if this is part of one
-        const storySeriesTitle = await getSeriesTitleForStory(storyIdMatch[1]);
+        const storySeriesTitle = await getSeriesTitleForStory(storyId);
         if (storySeriesTitle) {
           const seriesIds = await getStoryIdsBySeriesTitle(storySeriesTitle);
           for (const sid of seriesIds) {
-            if (sid !== storyIdMatch[1]) {
-              await runPython(projectRoot, ['ingestion/enrich_images.py', '--story-id', sid]);
+            if (sid !== storyId) {
+              await runPythonJson(projectRoot, ['ingestion/enrich_images.py', '--story-id', sid]);
             }
           }
         }
       } catch (enrichError) {
-        console.warn('Image enrichment failed (non-fatal):', enrichError);
+        logger.warn({ err: enrichError }, 'Image enrichment failed (non-fatal)');
       }
     } else {
-      console.warn(`Could not parse story_id from load_to_db.py output. Skipping enrichment. Output: ${loadOutput.slice(-200)}`);
+      logger.warn('load_to_db.py emitted no result event with a story_id; skipping enrichment');
     }
 
     res.json({
       success: true,
       message: 'Ingestion complete',
-      storyId: storyIdMatch?.[1] || null,
+      storyId,
     });
-  } catch (error) {
-    console.error('Admin ingest error:', error);
-    res.status(500).json({ error: 'Ingestion failed', details: String(error) });
   } finally {
+    // Best-effort cleanup regardless of success/failure; the error (if any) propagates to the
+    // centralized error handler for a normalized 500 envelope.
     await unlink(file.path).catch(() => { /* best effort cleanup */ });
     await rm(workDir, { recursive: true, force: true }).catch(() => { /* best effort cleanup */ });
   }
-};
+});

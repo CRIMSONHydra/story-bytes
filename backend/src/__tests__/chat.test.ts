@@ -72,7 +72,7 @@ describe('POST /api/chat', () => {
       .send({ storyId: TEST_UUID });
 
     expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({ error: 'Invalid request' });
+    expect(response.body).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
   });
 
   it('invalid storyId returns 400', async () => {
@@ -81,7 +81,7 @@ describe('POST /api/chat', () => {
       .send({ query: 'Who is the protagonist?', storyId: 'not-a-uuid' });
 
     expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({ error: 'Invalid request' });
+    expect(response.body).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
   });
 
   it('theory mode passes mode to service', async () => {
@@ -118,6 +118,6 @@ describe('POST /api/chat', () => {
 
     expect(response.status).toBe(502);
     expect(response.body.error).toMatchObject({ code: 'chat_pipeline_failed' });
-    expect(typeof response.body.error.traceId).toBe('string');
+    expect(typeof response.body.error.requestId).toBe('string');
   });
 });

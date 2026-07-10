@@ -94,6 +94,6 @@ describe('PUT /api/stories/:storyId/progress', () => {
       .send({});
 
     expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({ error: 'Invalid request' });
+    expect(response.body).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
   });
 });

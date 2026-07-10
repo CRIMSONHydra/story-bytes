@@ -393,7 +393,7 @@ Phase 1 (Fix embeddings)
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Embedding model | Gemini `gemini-embedding-001` (768-dim) | Consistency between ingest and query; `gemini-embedding-001` was retired |
+| Embedding model | Gemini `gemini-embedding-2` (1536-dim MRL) | Migrated off `gemini-embedding-001`; in-prompt task instruction, auto-normalized, HNSW-indexable (see IMPROVEMENT_PLAN §11) |
 | Vector store | pgvector in PostgreSQL | Single database, HNSW indexes, sufficient for this scale |
 | Image analysis | Gemini vision (multimodal) | Same API/billing as text; strong visual understanding |
 | Foreshadowing | LLM prompt engineering at query time | Simpler than ingest-time tagging; more flexible |

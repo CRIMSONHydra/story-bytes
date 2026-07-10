@@ -8,8 +8,10 @@ import express from 'express';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-import { env } from './config/env';
 import { checkDatabase } from './db/pool';
+import { errorHandler, notFoundHandler } from './middleware/errors';
+import { apiLimiter } from './middleware/rateLimits';
+import { httpLogger, logger } from './services/logger';
 import routes from './routes';
 
 const pkg = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf-8'));
@@ -21,10 +23,16 @@ const pkg = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'u
 export const createApp = () => {
   const app = express();
   app.set('trust proxy', true);
+  app.use(httpLogger);
+  // Advertise the API contract version on every response (M1, Platform F1).
+  app.use((_req, res, next) => {
+    res.setHeader('X-API-Version', pkg.version);
+    next();
+  });
   app.use(cors());
   app.use(express.json());
 
-  app.use('/api', routes);
+  app.use('/api', apiLimiter, routes);
 
   // Root endpoint - service information
   app.get('/', (_req, res) => {
@@ -46,7 +54,7 @@ export const createApp = () => {
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      console.error('Database health check failed', error);
+      logger.error({ err: error }, 'Database health check failed');
       res.status(503).json({
         status: 'error',
         db: 'unreachable',
@@ -56,14 +64,9 @@ export const createApp = () => {
     }
   });
 
-  // Configuration endpoint - returns non-sensitive config info
-  app.get('/config', (_req, res) => {
-    res.json({
-      port: env.port,
-      databaseUrlSet: Boolean(env.databaseUrl)
-    });
-  });
+  // 404 for unmatched routes, then the centralized error envelope. Both MUST be last.
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
   return app;
 };
-

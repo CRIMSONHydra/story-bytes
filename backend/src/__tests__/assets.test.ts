@@ -48,7 +48,7 @@ describe('GET /api/assets/:assetId/image', () => {
     const response = await request(createApp()).get(`/api/assets/${TEST_UUID}/image`);
 
     expect(response.status).toBe(404);
-    expect(response.body).toMatchObject({ error: 'Asset not found' });
+    expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND', message: 'Asset not found' } });
   });
 
   it('serves binary_data from DB with correct content-type', async () => {
@@ -95,7 +95,7 @@ describe('GET /api/assets/:assetId/image', () => {
     const response = await request(createApp()).get(`/api/assets/${TEST_UUID}/image`);
 
     expect(response.status).toBe(404);
-    expect(response.body).toMatchObject({ error: 'Asset file not found' });
+    expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND', message: 'Asset file not found' } });
   });
 });
 
@@ -112,14 +112,14 @@ describe('GET /api/stories/:storyId/image', () => {
       .query({ path: 'Images/cover.jpg' });
 
     expect(response.status).toBe(404);
-    expect(response.body).toMatchObject({ error: 'Story not found' });
+    expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND', message: 'Story not found' } });
   });
 
   it('returns 400 when no path query parameter', async () => {
     const response = await request(createApp()).get(`/api/stories/${TEST_UUID}/image`);
 
     expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({ error: 'Image path required (use ?path=...)' });
+    expect(response.body).toMatchObject({ error: { code: 'VALIDATION_ERROR', message: 'Image path required (use ?path=...)' } });
   });
 
   it('returns 404 when EPUB file not found', async () => {
@@ -134,7 +134,7 @@ describe('GET /api/stories/:storyId/image', () => {
       .query({ path: 'Images/cover.jpg' });
 
     expect(response.status).toBe(404);
-    expect(response.body).toMatchObject({ error: 'EPUB file not found for this story' });
+    expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND', message: 'EPUB file not found for this story' } });
   });
 
   it('returns 404 when epub_path is null and glob finds nothing', async () => {

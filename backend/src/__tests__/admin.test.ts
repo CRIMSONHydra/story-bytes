@@ -76,7 +76,7 @@ describe('Admin API', () => {
     it('returns 400 without file', async () => {
       const res = await request(app).post('/api/admin/ingest');
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain('No file');
+      expect(res.body.error.message).toContain('No file');
     });
   });
 });

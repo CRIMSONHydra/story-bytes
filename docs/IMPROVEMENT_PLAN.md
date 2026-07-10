@@ -414,7 +414,11 @@ file over 1000 lines; vanilla CSS only.
 
 ### Phase A — Foundation (critical-path root)
 
-**M1 — Repo baseline + error/log/security spine** · *Platform F1–F3* · prereq: none
+**M1 — Repo baseline + error/log/security spine** · *Platform F1–F3* · prereq: none · ✅ **DONE**
+(`middleware/errors.ts` envelope + `asyncHandler`; pino `services/logger.ts` + `httpLogger` request ids;
+`no-console` enforced; `X-API-Version`; `GET /config` removed; `middleware/adminAuth.ts`;
+`middleware/rateLimits.ts` chat 20/min · ingest 6/hr · api 300/min; `env.validateAtBoot()`. Tests:
+`middleware.test.ts` covers the envelope per class + 401 + 429. Backend 79 tests green.)
 Merge the current `feat/docker-compose-cicd` branch as the baseline everything diffs against. Add
 `middleware/errors.ts` (`ApiError`, `{error:{code,message,details?,requestId?}}` envelope, 404 + Zod + multer + bad-UUID
 mapping — fixes multer HTML errors and raw-stderr leaks), `services/logger.ts` (pino + `pino-http` with request IDs,
@@ -430,7 +434,13 @@ Demote `db/schema.sql` to first-boot bootstrap + drift reference.
 *DONE+:* baseline idempotent on empty **and** existing DB; `schema_migrations` populated; **CI drift check green (make
 it mandatory, not optional).* → **Human checkpoint #1.**
 
-**M3 — Python runtime contract + packaging** · *Platform F6* · prereq: M1 · parallel with M2
+**M3 — Python runtime contract + packaging** · *Platform F6* · prereq: M1 · parallel with M2 · ✅ **DONE**
+(`load_to_db.py` emits JSONL `progress`/`result` events on STDOUT — `emit_event()` — with all logs on
+STDERR; `backend/src/services/pythonRunner.ts` streams+parses them, bounded stderr tail + timeout;
+`admin.ts` reads `story_id` from the `result` event and the fragile regex is **deleted**;
+`ingestion/pyproject.toml` + committed `uv.lock`; Dockerfile uses `uv sync --locked`; scripts run via
+`uv run --project ingestion python`. Tests: `pythonRunner.test.ts` (5) + `test_load_to_db_events.py`
+(4). `requirements*.txt` kept as legacy shims until the M6 CI overhaul.)
 Add the structured stdout contract to `load_to_db.py`: a JSONL event stream on **stdout** (`progress`/`usage`/`result`
 events) with all human logs on **stderr** — this is the terminal `RESULT {json}` line *and* streamed progress, built
 once so M11 extends rather than rewrites. Extract `pythonRunner.ts` from `admin.ts` (JSONL-aware, bounded buffers,

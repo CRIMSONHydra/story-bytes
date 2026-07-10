@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { getAssetById, getStoryById } from '../services/db';
 import { readFile, access } from 'fs/promises';
 import { join, extname, resolve } from 'path';
+import { asyncHandler, badRequest, notFound } from '../middleware/errors';
 
 /**
  * Resolve the project root directory.
@@ -21,55 +22,47 @@ const MIME_MAP: Record<string, string> = {
 /**
  * Serves an asset image by asset ID (from DB or filesystem).
  */
-export const handleGetAssetImage = async (req: Request, res: Response) => {
+export const handleGetAssetImage = asyncHandler(async (req: Request, res: Response) => {
   const assetId = req.params.assetId as string;
 
-  try {
-    const asset = await getAssetById(assetId);
-    if (!asset) {
-      res.status(404).json({ error: 'Asset not found' });
-      return;
-    }
+  const asset = await getAssetById(assetId);
+  if (!asset) throw notFound('Asset not found');
 
-    if (asset.binary_data) {
-      res.set('Content-Type', asset.media_type || 'image/jpeg');
-      res.set('Cache-Control', 'public, max-age=86400');
-      res.send(asset.binary_data);
-      return;
-    }
+  if (asset.binary_data) {
+    res.set('Content-Type', asset.media_type || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(asset.binary_data);
+    return;
+  }
 
-    if (asset.storage_url) {
-      res.redirect(asset.storage_url);
-      return;
-    }
+  if (asset.storage_url) {
+    res.redirect(asset.storage_url);
+    return;
+  }
 
-    if (asset.href) {
-      const candidates = [
-        asset.href,
-        join('processed', asset.href),
-        join('dataset', asset.href),
-      ];
+  if (asset.href) {
+    const candidates = [
+      asset.href,
+      join('processed', asset.href),
+      join('dataset', asset.href),
+    ];
 
-      for (const candidate of candidates) {
-        try {
-          const data = await readFile(candidate);
-          const ext = extname(asset.href).toLowerCase();
-          res.set('Content-Type', MIME_MAP[ext] || 'image/jpeg');
-          res.set('Cache-Control', 'public, max-age=86400');
-          res.send(data);
-          return;
-        } catch {
-          // Try next candidate
-        }
+    for (const candidate of candidates) {
+      try {
+        const data = await readFile(candidate);
+        const ext = extname(asset.href).toLowerCase();
+        res.set('Content-Type', MIME_MAP[ext] || 'image/jpeg');
+        res.set('Cache-Control', 'public, max-age=86400');
+        res.send(data);
+        return;
+      } catch {
+        // Try next candidate
       }
     }
-
-    res.status(404).json({ error: 'Asset file not found' });
-  } catch (error) {
-    console.error('Asset controller error:', error);
-    res.status(500).json({ error: 'Internal server error' });
   }
-};
+
+  throw notFound('Asset file not found');
+});
 
 /**
  * Serves an image from inside an EPUB archive by story ID + internal path.
@@ -78,22 +71,16 @@ export const handleGetAssetImage = async (req: Request, res: Response) => {
  * The internal path (e.g. "Images/image44.jpg" or "OEBPS/Images/foo.jpg")
  * is extracted from the EPUB (which is a ZIP file).
  */
-export const handleGetStoryImage = async (req: Request, res: Response) => {
+export const handleGetStoryImage = asyncHandler(async (req: Request, res: Response) => {
   const storyId = req.params.storyId as string;
   const imagePathStr = req.query.path as string;
 
-  if (!imagePathStr) {
-    res.status(400).json({ error: 'Image path required (use ?path=...)' });
-    return;
-  }
+  if (!imagePathStr) throw badRequest('Image path required (use ?path=...)');
 
-  try {
-    const story = await getStoryById(storyId);
-    if (!story) {
-      res.status(404).json({ error: 'Story not found' });
-      return;
-    }
+  const story = await getStoryById(storyId);
+  if (!story) throw notFound('Story not found');
 
+  {
     // Find the EPUB file — use stored epub_path or fall back to glob search
     const projectRoot = getProjectRoot();
     let epubPath: string | null = null;
@@ -130,10 +117,7 @@ export const handleGetStoryImage = async (req: Request, res: Response) => {
       if (bestScore < 2) epubPath = null;
     }
 
-    if (!epubPath) {
-      res.status(404).json({ error: 'EPUB file not found for this story' });
-      return;
-    }
+    if (!epubPath) throw notFound('EPUB file not found for this story');
 
     // Extract image from EPUB (ZIP)
     const { default: JSZip } = await import('jszip');
@@ -174,9 +158,6 @@ export const handleGetStoryImage = async (req: Request, res: Response) => {
       }
     }
 
-    res.status(404).json({ error: 'Image not found in EPUB' });
-  } catch (error) {
-    console.error('Story image controller error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    throw notFound('Image not found in EPUB');
   }
-};
+});

@@ -14,72 +14,49 @@ import {
   getEntityDetail,
   getThreadsWithStatus,
 } from '../services/graph';
+import { asyncHandler, badRequest, invalidId, notFound } from '../middleware/errors';
 
 const uuidSchema = z.string().uuid();
 const boundarySchema = z.coerce.number().int().min(0);
 
-const badId = (res: Response) =>
-  res.status(400).json({ error: { code: 'INVALID_ID', message: 'Invalid id' } });
-const needBoundary = (res: Response) =>
-  res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'upToChapter (int >= 0) is required' } });
+const parseBoundary = (value: unknown): number => {
+  const parsed = boundarySchema.safeParse(value);
+  if (!parsed.success) throw badRequest('upToChapter (int >= 0) is required');
+  return parsed.data;
+};
 
-export const handleGetStoryGraph = async (req: Request, res: Response) => {
-  const storyId = uuidSchema.safeParse(req.params.storyId);
-  if (!storyId.success) return badId(res);
-  const upTo = boundarySchema.safeParse(req.query.upToChapter);
-  if (!upTo.success) return needBoundary(res);
+const parseId = (value: unknown): string => {
+  const parsed = uuidSchema.safeParse(value);
+  if (!parsed.success) throw invalidId('Invalid id');
+  return parsed.data;
+};
+
+export const handleGetStoryGraph = asyncHandler(async (req: Request, res: Response) => {
+  const storyId = parseId(req.params.storyId);
+  const upTo = parseBoundary(req.query.upToChapter);
   const typesParam = typeof req.query.types === 'string' ? req.query.types : undefined;
   const types = typesParam ? typesParam.split(',').map((t) => t.trim()).filter(Boolean) : undefined;
-  try {
-    res.json(await getStoryGraph(storyId.data, upTo.data, types));
-  } catch (error) {
-    console.error('Graph controller error:', error);
-    res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to load graph' } });
-  }
-};
+  res.json(await getStoryGraph(storyId, upTo, types));
+});
 
-export const handleSearchEntities = async (req: Request, res: Response) => {
-  const storyId = uuidSchema.safeParse(req.params.storyId);
-  if (!storyId.success) return badId(res);
-  const upTo = boundarySchema.safeParse(req.query.upToChapter);
-  if (!upTo.success) return needBoundary(res);
+export const handleSearchEntities = asyncHandler(async (req: Request, res: Response) => {
+  const storyId = parseId(req.params.storyId);
+  const upTo = parseBoundary(req.query.upToChapter);
   const q = typeof req.query.q === 'string' ? req.query.q : undefined;
   const type = typeof req.query.type === 'string' ? req.query.type : undefined;
-  try {
-    res.json({ entities: await searchEntities(storyId.data, upTo.data, q, type) });
-  } catch (error) {
-    console.error('Entities controller error:', error);
-    res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to search entities' } });
-  }
-};
+  res.json({ entities: await searchEntities(storyId, upTo, q, type) });
+});
 
-export const handleGetEntity = async (req: Request, res: Response) => {
-  const entityId = uuidSchema.safeParse(req.params.entityId);
-  if (!entityId.success) return badId(res);
-  const upTo = boundarySchema.safeParse(req.query.upToChapter);
-  if (!upTo.success) return needBoundary(res);
-  try {
-    const detail = await getEntityDetail(entityId.data, upTo.data);
-    if (!detail) {
-      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Entity not found or not yet revealed' } });
-      return;
-    }
-    res.json(detail);
-  } catch (error) {
-    console.error('Entity detail controller error:', error);
-    res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to load entity' } });
-  }
-};
+export const handleGetEntity = asyncHandler(async (req: Request, res: Response) => {
+  const entityId = parseId(req.params.entityId);
+  const upTo = parseBoundary(req.query.upToChapter);
+  const detail = await getEntityDetail(entityId, upTo);
+  if (!detail) throw notFound('Entity not found or not yet revealed');
+  res.json(detail);
+});
 
-export const handleGetThreads = async (req: Request, res: Response) => {
-  const storyId = uuidSchema.safeParse(req.params.storyId);
-  if (!storyId.success) return badId(res);
-  const upTo = boundarySchema.safeParse(req.query.upToChapter);
-  if (!upTo.success) return needBoundary(res);
-  try {
-    res.json({ threads: await getThreadsWithStatus(storyId.data, upTo.data) });
-  } catch (error) {
-    console.error('Threads controller error:', error);
-    res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to load threads' } });
-  }
-};
+export const handleGetThreads = asyncHandler(async (req: Request, res: Response) => {
+  const storyId = parseId(req.params.storyId);
+  const upTo = parseBoundary(req.query.upToChapter);
+  res.json({ threads: await getThreadsWithStatus(storyId, upTo) });
+});

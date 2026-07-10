@@ -63,7 +63,7 @@ describe('GET /api/stories', () => {
     const response = await request(createApp()).get('/api/stories');
 
     expect(response.status).toBe(500);
-    expect(response.body).toMatchObject({ error: 'Internal server error' });
+    expect(response.body).toMatchObject({ error: { code: 'INTERNAL' } });
   });
 });
 
@@ -88,6 +88,6 @@ describe('GET /api/stories/:id', () => {
     const response = await request(createApp()).get(`/api/stories/${TEST_UUID}`);
 
     expect(response.status).toBe(404);
-    expect(response.body).toMatchObject({ error: 'Story not found' });
+    expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND', message: 'Story not found' } });
   });
 });

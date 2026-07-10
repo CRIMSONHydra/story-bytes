@@ -5,6 +5,7 @@
  */
 
 import { getModel, generateEmbedding } from './llm';
+import { logger } from './logger';
 import { MAIN_MODEL } from '../config/models';
 import {
   findSimilarBlocks,
@@ -250,7 +251,7 @@ export const answerQuery = async (
           graphContext = formatGraphContext(linked, ego);
         }
       } catch (err) {
-        console.error('Graph linking failed (non-fatal):', err);
+        logger.error({ err }, 'Graph linking failed (non-fatal)');
       }
     }
 
@@ -333,7 +334,7 @@ export const answerQuery = async (
             + threads.map(t => `- ${t.name}: ${t.latestBeat}`).join('\n');
         }
       } catch (err) {
-        console.error('Foreshadowing seed lookup failed (non-fatal):', err);
+        logger.error({ err }, 'Foreshadowing seed lookup failed (non-fatal)');
       }
     }
 
@@ -380,7 +381,7 @@ Respond as STRICT JSON (no markdown fences):
             + "lead — that would risk spoiling what's ahead. Look again at the highlighted setups above.";
         }
       } catch (err) {
-        console.error('Foreshadowing answer guard failed (non-fatal):', err);
+        logger.error({ err }, 'Foreshadowing answer guard failed (non-fatal)');
       }
     }
 
@@ -424,14 +425,14 @@ Respond as STRICT JSON (no markdown fences):
     void saveRagTrace({
       traceId, storyId: storyId ?? null, mode: effectiveMode, boundaryChapter: boundary ?? null,
       query, answer, confidence, sourceCount: sources.length, insufficientContext,
-    }).catch(err => console.error('saveRagTrace failed (non-fatal):', err));
+    }).catch(err => logger.error({ err }, 'saveRagTrace failed (non-fatal)'));
 
     return { answer, sources, images, confidence, insufficientContext, traceId };
   } catch (error) {
     // Hard pipeline failure: log and rethrow so the controller returns 502 (monitoring-visible),
     // instead of masking an outage as a 200 "apology". Insufficient-context is NOT an error — that
     // is a normal 200 with insufficientContext=true handled above.
-    console.error(`Error in RAG answerQuery (trace ${traceId}):`, error);
+    logger.error({ err: error, traceId }, 'Error in RAG answerQuery');
     throw error;
   }
 };

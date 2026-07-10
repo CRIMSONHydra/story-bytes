@@ -47,12 +47,14 @@ story-bytes/
 ## Tech Stack
 
 - **Package manager:** pnpm 10+ (monorepo workspaces)
-- **Backend:** Express 5, TypeScript 5.9, Node.js 20+, Zod validation
+- **Backend:** Express 5, TypeScript 5.9, Node.js 20+, Zod validation, pino logging, express-rate-limit
 - **Frontend:** React 19, TypeScript 5.9, Vite (rolldown-vite 7.2), React Router 7
 - **Database:** PostgreSQL 18+ on port 5433, with pgvector 0.8+ (HNSW cosine similarity)
-- **LLM:** Google Gemini 2.5 Flash via @google/genai SDK
-- **Embeddings:** Gemini `gemini-embedding-001` (768-dim vectors via `output_dimensionality`)
-- **Testing:** Vitest 4 + Supertest (backend, 9 tests)
+- **LLM:** Google Gemini via @google/genai SDK — `gemini-flash-lite-latest` (demo-stage default for both
+  tiers; override `GEMINI_MAIN_MODEL=gemini-flash-latest` post-demo). Model IDs centralized in
+  `backend/src/config/models.ts` + `ingestion/models.py`.
+- **Embeddings:** Gemini `gemini-embedding-2` (1536-dim MRL, in-prompt task instruction, auto-normalized)
+- **Testing:** Vitest 4 + Supertest (backend, 79 tests)
 - **Linting:** ESLint 9 flat config + typescript-eslint + eslint-config-prettier (backend), react-hooks + react-refresh plugins (frontend)
 - **Styling:** Vanilla CSS only — **NO Tailwind CSS**
 - **Ingestion:** Python 3.12+ (psycopg2, google-genai, ebooklib, BeautifulSoup4, rarfile, pytesseract, Pillow)
@@ -84,11 +86,12 @@ pnpm test                  # Run backend Vitest suite (8 tests)
 pnpm --filter backend <script>
 pnpm --filter frontend <script>
 
-# Python ingestion
-uv run python ingestion/epub/extract_epub.py dataset/<folder> -o processed -v
-uv run python ingestion/comic/extract_comic.py <archive> -o processed -v --ocr
-uv run python ingestion/load_to_db.py processed/<file>.json [--tag-images]
-uv run python ingestion/enrich_images.py --all
+# Python ingestion — run under the locked project env (M3). ingestion/pyproject.toml + uv.lock are
+# the source of truth; `uv sync --locked` (Docker) installs it. requirements*.txt are legacy shims.
+uv run --project ingestion python ingestion/epub/extract_epub.py dataset/<folder> -o processed -v
+uv run --project ingestion python ingestion/comic/extract_comic.py <archive> -o processed -v --ocr
+uv run --project ingestion python ingestion/load_to_db.py processed/<file>.json [--tag-images]
+uv run --project ingestion python ingestion/enrich_images.py --all
 ```
 
 ## Database
@@ -144,6 +147,24 @@ GEMINI_API_KEY=...
 GOOGLE_SEARCH_API_KEY=...
 GOOGLE_CX=...
 ```
+
+Optional (M1): `ADMIN_TOKEN` (when set, `/api/admin/*` requires `Authorization: Bearer <token>`;
+unset ⇒ open with a boot warning), `LOG_LEVEL` (pino level, default `info`), `NODE_ENV`. Model
+overrides: `GEMINI_MAIN_MODEL` / `GEMINI_LITE_MODEL` / `GEMINI_EMBEDDING_MODEL` /
+`GEMINI_EMBEDDING_DIMS` / `EMBEDDING_MODEL_TAG` / `GEMINI_JUDGE_MODEL` (see `.env.example`).
+
+## API Conventions (M1)
+
+- **Error envelope:** every error response is `{ error: { code, message, details?, requestId } }`.
+  Controllers throw `ApiError` (or the `badRequest`/`notFound`/`invalidId`/`unauthorized`/`fromZod`
+  helpers in `middleware/errors.ts`) and are wrapped in `asyncHandler`; a central `errorHandler` maps
+  Zod → 400, Multer → 400/413, Postgres `22P02` (bad UUID) → 400, everything else → a logged 500.
+- **Logging:** use the pino `logger` (`services/logger.ts`) — **never `console.*`** (ESLint `no-console`
+  is an error outside `src/scripts/`). `httpLogger` assigns a correlation `req.id` echoed as `requestId`.
+- **Security/limits:** `adminAuth` gates `/api/admin/*`; rate limits — chat 20/min, ingest 6/hr, api
+  300/min (`middleware/rateLimits.ts`, inert under test). Every response carries `X-API-Version`.
+- `validateAtBoot()` (in `server.ts`) fails fast on an unresolvable DB URL and warns on missing
+  `GEMINI_API_KEY` / `ADMIN_TOKEN`.
 
 ---
 

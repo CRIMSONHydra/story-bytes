@@ -5,9 +5,10 @@
 
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { randomUUID } from 'crypto';
 import { answerQuery } from '../services/rag';
 import { DEFAULT_USER_ID } from '../services/spoilerScope';
+import { ApiError, asyncHandler, fromZod } from '../middleware/errors';
+import { logger } from '../services/logger';
 
 /**
  * Request body schema for chat endpoint.
@@ -24,16 +25,9 @@ const chatRequestSchema = z.object({
  * Handles POST /api/chat requests.
  * Returns { answer, sources, images } for rich frontend display.
  */
-export const handleChat = async (req: Request, res: Response) => {
+export const handleChat = asyncHandler(async (req: Request, res: Response) => {
   const validation = chatRequestSchema.safeParse(req.body);
-
-  if (!validation.success) {
-    res.status(400).json({
-      error: 'Invalid request',
-      details: validation.error.format()
-    });
-    return;
-  }
+  if (!validation.success) throw fromZod(validation.error);
 
   const { query, storyId, currentChapter, mode } = validation.data;
   const userId = (req.headers['x-user-id'] as string) || DEFAULT_USER_ID;
@@ -43,9 +37,10 @@ export const handleChat = async (req: Request, res: Response) => {
     res.json(result);
   } catch (error) {
     // Hard pipeline failure (embedding/model/DB) surfaces as 502 with a correlation id — not a
-    // 200 apology that hides the outage from monitoring (Improvement Plan M9 / §3.4).
-    const traceId = randomUUID();
-    console.error(`Chat pipeline failed (trace ${traceId}):`, error);
-    res.status(502).json({ error: { code: 'chat_pipeline_failed', message: 'The assistant is temporarily unavailable.', traceId } });
+    // 200 apology that hides the outage from monitoring (Improvement Plan M9 / §3.4). The request
+    // id (echoed in the envelope) is the correlation handle.
+    const requestId = (req as Request & { id?: string }).id;
+    logger.error({ err: error, requestId }, 'Chat pipeline failed');
+    throw new ApiError(502, 'chat_pipeline_failed', 'The assistant is temporarily unavailable.');
   }
-};
+});

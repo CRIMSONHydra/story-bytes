@@ -44,7 +44,9 @@ COPY --from=build /app/frontend/dist frontend/dist
 # Copy database schema and ingestion scripts
 COPY db/ db/
 COPY ingestion/ ingestion/
-RUN pip3 install --no-cache-dir -r ingestion/requirements.txt
+# Install the pinned ingestion env from the committed lockfile (M3, F6). Scripts run via
+# `uv run --project ingestion python ...` (see backend pythonRunner) against this synced env.
+RUN uv sync --locked --project ingestion
 
 # Copy Docker configs
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf

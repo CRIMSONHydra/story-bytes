@@ -61,7 +61,7 @@ describe('POST /api/stories/:storyId/summarize', () => {
       .send({});
 
     expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({ error: 'Invalid request' });
+    expect(response.body).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
   });
 
   it('negative upToChapter returns 400', async () => {
@@ -70,7 +70,7 @@ describe('POST /api/stories/:storyId/summarize', () => {
       .send({ upToChapter: -1 });
 
     expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({ error: 'Invalid request' });
+    expect(response.body).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
   });
 
   it('returns 500 on error', async () => {
@@ -81,6 +81,6 @@ describe('POST /api/stories/:storyId/summarize', () => {
       .send({ upToChapter: 3 });
 
     expect(response.status).toBe(500);
-    expect(response.body).toMatchObject({ error: 'Internal server error' });
+    expect(response.body).toMatchObject({ error: { code: 'INTERNAL' } });
   });
 });
