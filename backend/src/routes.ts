@@ -14,6 +14,7 @@ import { handleGetAssetImage, handleGetStoryImage } from './controllers/assets';
 import { handleGetProgress, handleUpdateProgress } from './controllers/progress';
 import { handleAdminGetStories, handleAdminDeleteStory, handleAdminIngest, handleGetSeries, handleGetTrace } from './controllers/admin';
 import { handleListUsers, handleGetUser, handleCreateUser, handleUpdateUser, handleDeleteUser } from './controllers/users';
+import { handleGetJob, handleListJobs, handleCancelJob } from './controllers/jobs';
 import { upload } from './middleware/upload';
 import { adminAuth } from './middleware/adminAuth';
 import { chatLimiter, ingestLimiter } from './middleware/rateLimits';
@@ -68,6 +69,12 @@ router.delete('/users/:id', handleDeleteUser);
 
 // Series
 router.get('/series', handleGetSeries);
+
+// Jobs (M5) — async ingestion status. Reading a job by id is open (the admin UI polls it); the
+// admin job list + cancel are gated.
+router.get('/jobs/:jobId', handleGetJob);
+router.get('/admin/jobs', adminAuth, handleListJobs);
+router.post('/admin/jobs/:jobId/cancel', adminAuth, handleCancelJob);
 
 // Admin — gated by ADMIN_TOKEN when configured (no-op in dev if unset)
 router.get('/admin/stories', adminAuth, handleAdminGetStories);

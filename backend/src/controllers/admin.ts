@@ -1,14 +1,14 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { randomUUID } from 'crypto';
-import { unlink, copyFile, mkdir, rm } from 'fs/promises';
+import { randomUUID, createHash } from 'crypto';
+import { unlink, copyFile, mkdir, rm, readFile } from 'fs/promises';
 import { resolve, basename } from 'path';
-import { getAdminStories, deleteStory, getSeriesTitleForStory, getStoryIdsBySeriesTitle, getDistinctSeries } from '../services/admin';
+import { getAdminStories, deleteStory, getDistinctSeries } from '../services/admin';
 import { getRagTrace } from '../services/db';
 import { getProjectRoot } from './assets';
 import { asyncHandler, badRequest, invalidId, notFound } from '../middleware/errors';
-import { logger } from '../services/logger';
-import { runPythonJson } from '../services/pythonRunner';
+import { enqueueIngest } from '../jobs/queue';
+import { createIngestJob, findReusableJobBySha } from '../jobs/progress';
 
 const uuidSchema = z.string().uuid();
 
@@ -38,84 +38,47 @@ export const handleAdminDeleteStory = asyncHandler(async (req: Request, res: Res
   res.status(204).send();
 });
 
+const ALLOWED_EXT = ['.epub', '.cbz', '.cbr'];
+
+/**
+ * M5: accept an upload, stage it durably, and ENQUEUE the ingest — returns 202 + jobId immediately
+ * (no more multi-minute inline pipeline). The client polls GET /api/jobs/:jobId. Identical uploads
+ * (same sha256) reuse the existing in-flight/completed job instead of re-ingesting.
+ */
 export const handleAdminIngest = asyncHandler(async (req: Request, res: Response) => {
   const file = req.file;
   if (!file) throw badRequest('No file uploaded. Accepted: .epub, .cbz, .cbr');
 
-  const projectRoot = getProjectRoot();
   const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+  if (!ALLOWED_EXT.includes(ext)) throw badRequest(`Unsupported file type: ${ext}. Accepted: .epub, .cbz, .cbr`);
+
+  const projectRoot = getProjectRoot();
   const fileName = basename(file.originalname);
+  const seriesTitle = typeof req.body?.seriesTitle === 'string' ? req.body.seriesTitle : undefined;
 
-  // Per-request work directory to prevent races between concurrent ingests
-  const requestId = randomUUID();
-  const workDir = resolve(projectRoot, 'processed', `ingest-${requestId}`);
+  // Durable per-request work dir (survives the response; the worker cleans it up).
+  const workDir = resolve(projectRoot, 'processed', `ingest-${randomUUID()}`);
+  await mkdir(workDir, { recursive: true });
+  const workFilePath = resolve(workDir, fileName);
+  await copyFile(file.path, workFilePath);
 
-  try {
-    await mkdir(workDir, { recursive: true });
+  // Persistent copy in dataset/ for on-demand image serving (and the loader's epub_path glob).
+  const datasetDir = resolve(projectRoot, 'dataset');
+  await mkdir(datasetDir, { recursive: true });
+  await copyFile(file.path, resolve(datasetDir, fileName));
 
-    // Copy file to work dir and to dataset/ for persistent image serving
-    const workFilePath = resolve(workDir, fileName);
-    await copyFile(file.path, workFilePath);
+  // Dedup by content hash so a double-submit doesn't ingest twice.
+  const sha = createHash('sha256').update(await readFile(workFilePath)).digest('hex');
+  await unlink(file.path).catch(() => { /* multer temp no longer needed */ });
 
-    const datasetDir = resolve(projectRoot, 'dataset');
-    await mkdir(datasetDir, { recursive: true });
-    await copyFile(file.path, resolve(datasetDir, fileName));
-
-    // Step 1: Extract into per-request output dir
-    let extractScript: string[];
-    if (ext === '.epub') {
-      extractScript = ['ingestion/epub/extract_epub.py', workFilePath, '-o', workDir, '-v'];
-    } else if (ext === '.cbz' || ext === '.cbr') {
-      extractScript = ['ingestion/comic/extract_comic.py', workFilePath, '-o', workDir, '-v', '--ocr'];
-    } else {
-      throw badRequest(`Unsupported file type: ${ext}`);
-    }
-
-    await runPythonJson(projectRoot, extractScript);
-
-    // Find the output JSON in the work dir
-    const jsonStem = fileName.replace(/\.[^.]+$/, '');
-    const outputJson = resolve(workDir, `${jsonStem}.json`);
-
-    // Step 2: Load + tag images. story_id comes from the loader's terminal `result` JSONL event
-    // (M3 stdout contract) — no more regex-scraping the log text.
-    const seriesTitle = req.body?.seriesTitle as string | undefined;
-    const loadArgs = ['ingestion/load_to_db.py', outputJson, '--tag-images'];
-    if (seriesTitle) loadArgs.push('--series-title', seriesTitle);
-    const load = await runPythonJson(projectRoot, loadArgs);
-    const storyId = typeof load.result?.story_id === 'string' ? load.result.story_id : null;
-
-    // Step 3: Enrich images with story context
-    if (storyId) {
-      try {
-        await runPythonJson(projectRoot, ['ingestion/enrich_images.py', '--story-id', storyId]);
-
-        // Re-enrich entire series if this is part of one
-        const storySeriesTitle = await getSeriesTitleForStory(storyId);
-        if (storySeriesTitle) {
-          const seriesIds = await getStoryIdsBySeriesTitle(storySeriesTitle);
-          for (const sid of seriesIds) {
-            if (sid !== storyId) {
-              await runPythonJson(projectRoot, ['ingestion/enrich_images.py', '--story-id', sid]);
-            }
-          }
-        }
-      } catch (enrichError) {
-        logger.warn({ err: enrichError }, 'Image enrichment failed (non-fatal)');
-      }
-    } else {
-      logger.warn('load_to_db.py emitted no result event with a story_id; skipping enrichment');
-    }
-
-    res.json({
-      success: true,
-      message: 'Ingestion complete',
-      storyId,
-    });
-  } finally {
-    // Best-effort cleanup regardless of success/failure; the error (if any) propagates to the
-    // centralized error handler for a normalized 500 envelope.
-    await unlink(file.path).catch(() => { /* best effort cleanup */ });
-    await rm(workDir, { recursive: true, force: true }).catch(() => { /* best effort cleanup */ });
+  const existing = await findReusableJobBySha(sha);
+  if (existing) {
+    await rm(workDir, { recursive: true, force: true }).catch(() => { /* best effort */ });
+    res.status(202).json({ jobId: existing.jobId, deduplicated: true, status: existing.status });
+    return;
   }
+
+  const jobId = await enqueueIngest({ filePath: workFilePath, workDir, filename: fileName, ext, seriesTitle });
+  await createIngestJob(jobId, { sourceSha256: sha, filename: fileName, seriesTitle });
+  res.status(202).json({ jobId, status: 'queued' });
 });

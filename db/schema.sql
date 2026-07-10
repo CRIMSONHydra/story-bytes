@@ -428,3 +428,35 @@ CREATE TABLE IF NOT EXISTS rag_traces (
     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_rag_traces_created ON rag_traces (created_at);
+
+-- ---------------------------------------------------------------------------
+-- Async jobs (migration 1700000000006). pg-boss owns the pgboss.* queue schema;
+-- these mirror the app-level polling/dedup surface.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS ingest_jobs (
+    job_id          TEXT PRIMARY KEY,
+    source_sha256   TEXT,
+    filename        TEXT,
+    series_title    TEXT,
+    status          TEXT NOT NULL DEFAULT 'queued'
+                    CHECK (status IN ('queued', 'active', 'completed', 'failed', 'cancelled')),
+    story_id        UUID REFERENCES stories(story_id) ON DELETE SET NULL,
+    error           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_ingest_jobs_sha ON ingest_jobs (source_sha256);
+CREATE INDEX IF NOT EXISTS idx_ingest_jobs_created ON ingest_jobs (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS job_events (
+    event_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id      TEXT NOT NULL,
+    queue       TEXT,
+    event       TEXT NOT NULL,
+    stage       TEXT,
+    message     TEXT,
+    payload     JSONB DEFAULT '{}',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_job_events_job ON job_events (job_id, created_at);

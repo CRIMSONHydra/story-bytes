@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { API_BASE } from '../config';
+import { submitIngest, getJob, isTerminal, type JobEvent } from '../api/jobs';
+
+const JOB_STORAGE_KEY = 'story-bytes.lastIngestJob';
 
 interface AdminStory {
   story_id: string;
@@ -49,9 +52,11 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [jobEvents, setJobEvents] = useState<JobEvent[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [selectedSeries, setSelectedSeries] = useState('');
   const [expandedSeries, setExpandedSeries] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchStories = () => {
     setLoading(true);
@@ -75,36 +80,53 @@ export default function AdminPage() {
     }
   };
 
+  // Poll a job until it reaches a terminal state, streaming its stage events into the UI.
+  const pollJob = (jobId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    setUploading(true);
+    const tick = async () => {
+      try {
+        const { job, events } = await getJob(jobId);
+        setJobEvents(events);
+        setUploadStatus(`Job ${job.status}${job.error ? `: ${job.error}` : ''}`);
+        if (isTerminal(job.status)) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          setUploading(false);
+          localStorage.removeItem(JOB_STORAGE_KEY);
+          if (job.status === 'completed') { setFile(null); setSelectedSeries(''); fetchStories(); }
+        }
+      } catch {
+        /* transient poll error — keep trying */
+      }
+    };
+    void tick();
+    pollRef.current = setInterval(() => void tick(), 2000);
+  };
+
+  // Resume polling a job that was in flight when the page was last open.
+  useEffect(() => {
+    const saved = localStorage.getItem(JOB_STORAGE_KEY);
+    if (saved) pollJob(saved);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || uploading) return;
 
     setUploading(true);
-    setUploadStatus('Uploading and processing (this may take a few minutes)...');
-
+    setJobEvents([]);
+    setUploadStatus('Uploading…');
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      if (selectedSeries) formData.append('seriesTitle', selectedSeries);
-
-      const res = await fetch(`${API_BASE}/api/admin/ingest`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        setUploadStatus(`Ingestion complete! Story ID: ${data.storyId || 'unknown'}`);
-        setFile(null);
-        setSelectedSeries('');
-        fetchStories();
-      } else {
-        setUploadStatus(`Error: ${data.error || 'Unknown error'}`);
-      }
+      const accepted = await submitIngest(file, selectedSeries || undefined);
+      localStorage.setItem(JOB_STORAGE_KEY, accepted.jobId);
+      setUploadStatus(accepted.deduplicated ? 'Already ingested — showing existing job.' : 'Queued. Processing…');
+      pollJob(accepted.jobId);
     } catch (error) {
-      setUploadStatus(`Upload failed: ${error}`);
-    } finally {
       setUploading(false);
+      setUploadStatus(`Upload failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -139,8 +161,19 @@ export default function AdminPage() {
           </button>
         </form>
         {uploadStatus && <p className="upload-status">{uploadStatus}</p>}
+        {jobEvents.length > 0 && (
+          <ul className="upload-events" aria-label="Ingestion progress">
+            {jobEvents.map((e, i) => (
+              <li key={i} className={`upload-event upload-event--${e.event}`}>
+                <span className="upload-event__stage">{e.stage ?? e.event}</span>
+                {e.message && <span className="upload-event__msg">{e.message}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
         <p className="upload-hint">
-          Full pipeline: extract → embed → tag images → enrich with story context
+          Async pipeline: upload returns immediately; extract → embed → tag images → enrich run in the
+          background (poll shown above).
         </p>
       </div>
 

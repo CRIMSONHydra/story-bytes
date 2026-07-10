@@ -9,6 +9,7 @@ import { createApp } from './app';
 import { env, validateAtBoot } from './config/env';
 import { closePool } from './db/pool';
 import { logger } from './services/logger';
+import { startJobs, stopJobs } from './jobs/queue';
 
 // Fail fast on a broken config; warn loudly on a degraded/insecure one.
 validateAtBoot();
@@ -21,6 +22,10 @@ const server = app.listen(env.port, () => {
   logger.info(`Server running at http://localhost:${env.port}`);
 });
 
+// Start the background job queue. Non-fatal if it fails — the API still serves reads; only async
+// ingestion is unavailable until the queue can connect.
+void startJobs().catch((err) => logger.error({ err }, 'Failed to start job queue (async ingest disabled)'));
+
 /**
  * Gracefully shuts down the server and closes database connections.
  * @param signal - The termination signal received
@@ -29,9 +34,10 @@ const shutdown = async (signal: NodeJS.Signals | 'SIGUSR2') => {
   logger.info(`Received ${signal}. Gracefully shutting down...`);
   server.close(async () => {
     try {
+      await stopJobs(); // drain in-flight jobs before the DB pool closes
       await closePool();
     } catch (error) {
-      logger.error({ err: error }, 'Error closing database pool');
+      logger.error({ err: error }, 'Error during shutdown');
     } finally {
       process.exit(0);
     }
