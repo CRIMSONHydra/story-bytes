@@ -20,8 +20,13 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # Embedding model configuration
-EMBEDDING_MODEL = "gemini-embedding-001"
-EMBEDDING_DIMENSIONS = 768
+EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
+EMBEDDING_DIMENSIONS = int(os.getenv("GEMINI_EMBEDDING_DIMS", "1536"))
+# Tag stored in *_embeddings.model; backend retrieval matches this (keep in sync with EMBEDDING_MODEL_TAG).
+EMBEDDING_MODEL_TAG = os.getenv("EMBEDDING_MODEL_TAG", f"{EMBEDDING_MODEL}/{EMBEDDING_DIMENSIONS}")
+# Vision model for image tagging (centralized via GEMINI_MAIN_MODEL; gemini-2.5-flash was retired).
+# DEMO-STAGE DEFAULT: flash-lite (cost); set GEMINI_MAIN_MODEL=gemini-flash-latest to restore flash.
+IMAGE_MODEL = os.getenv("GEMINI_MAIN_MODEL", "gemini-flash-lite-latest")
 EMBEDDING_BATCH_SIZE = 100  # Gemini supports up to 100 per batch
 
 
@@ -139,10 +144,11 @@ def insert_story(cursor, story_data: Dict[str, Any], content_type: str = "novel"
     return cursor.fetchone()[0]
 
 def generate_embeddings_batch(client: genai.Client, texts: List[str]) -> List[List[float]]:
-    """Generate embeddings for a batch of texts using Gemini embedding model."""
+    """Embed a batch of DOCUMENT texts with gemini-embedding-2 (no task_type; the instruction is
+    in the input) at EMBEDDING_DIMENSIONS (MRL, auto-normalized)."""
     response = client.models.embed_content(
         model=EMBEDDING_MODEL,
-        contents=texts,
+        contents=[f"text: {t}" for t in texts],
         config=genai_types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIMENSIONS),
     )
     return [e.values for e in response.embeddings]
@@ -166,7 +172,7 @@ def tag_image_with_vision(
     """Use Gemini vision to generate visual tags for an image."""
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=IMAGE_MODEL,
             contents=[
                 genai_types.Content(
                     parts=[
@@ -226,12 +232,39 @@ def upsert_asset_with_tags(
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT (asset_id, model) DO UPDATE SET vector = EXCLUDED.vector
                 """,
-                (asset_id, EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, str(embs[0])),
+                (asset_id, EMBEDDING_MODEL_TAG, EMBEDDING_DIMENSIONS, str(embs[0])),
             )
         except Exception as e:
             logging.warning(f"Asset embedding failed for {href}: {e}")
 
     return asset_id
+
+
+def split_into_chunks(text: str, max_chars: int = 1600, target_chars: int = 1200) -> List[str]:
+    """Split an over-long text block on paragraph boundaries into ~target_chars sub-chunks with a
+    one-paragraph overlap (plan §3.2.6, M9 D6). Blocks <= max_chars are returned unchanged. This
+    fixes the "whole image-free chapter embeds as one giant vector" granularity problem; display is
+    unaffected (the reader just renders more, smaller text blocks). A single paragraph longer than
+    target_chars is kept whole (never split mid-paragraph)."""
+    import re
+    if not text or len(text) <= max_chars:
+        return [text]
+    paras = [p for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if len(paras) <= 1:
+        return [text]
+    chunks: List[str] = []
+    cur: List[str] = []
+    cur_len = 0
+    for p in paras:
+        if cur and cur_len + len(p) > target_chars:
+            chunks.append("\n\n".join(cur))
+            cur = [cur[-1]]          # 1-paragraph overlap into the next chunk
+            cur_len = len(cur[0])
+        cur.append(p)
+        cur_len += len(p)
+    if cur:
+        chunks.append("\n\n".join(cur))
+    return chunks
 
 
 def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], client: genai.Client | None, tag_images: bool = False):
@@ -276,11 +309,29 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
         )
         chapter_id = cursor.fetchone()[0]
 
-        for idx, block in enumerate(blocks):
+        block_index = 0
+        for block in blocks:
             block_type = block.get("type")
-            text_content = block.get("text")
             image_src = block.get("src")
             image_alt = block.get("alt")
+
+            if block_type == 'text':
+                # Over-long text blocks are split into ~1200-char sub-blocks so retrieval is not
+                # coarse-grained (M9 D6). Each sub-block is embedded independently.
+                for chunk in split_into_chunks(block.get("text") or ""):
+                    cursor.execute(
+                        """
+                        INSERT INTO chapter_blocks (chapter_id, block_index, block_type, text_content, image_src, image_alt)
+                        VALUES (%s, %s, 'text', %s, NULL, NULL)
+                        RETURNING block_id
+                        """,
+                        (chapter_id, block_index, chunk),
+                    )
+                    block_id = cursor.fetchone()[0]
+                    block_index += 1
+                    if chunk and len(chunk.strip()) > 10:
+                        pending_embeddings.append({"block_id": block_id, "text": chunk})
+                continue
 
             cursor.execute(
                 """
@@ -288,19 +339,10 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
                 VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING block_id
                 """,
-                (
-                    chapter_id,
-                    idx,
-                    block_type,
-                    text_content,
-                    image_src,
-                    image_alt
-                )
+                (chapter_id, block_index, block_type, block.get("text"), image_src, image_alt),
             )
             block_id = cursor.fetchone()[0]
-
-            if block_type == 'text' and text_content and len(text_content.strip()) > 10:
-                pending_embeddings.append({"block_id": block_id, "text": text_content})
+            block_index += 1
 
             if tag_images and block_type == 'image' and image_src and client:
                 image_path = _resolve_image_path(image_src)
@@ -369,7 +411,7 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
                         INSERT INTO block_embeddings (block_id, model, dimensions, vector)
                         VALUES (%s, %s, %s, %s)
                         """,
-                        (item["block_id"], EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, str(single[0]))
+                        (item["block_id"], EMBEDDING_MODEL_TAG, EMBEDDING_DIMENSIONS, str(single[0]))
                     )
                     embedded_count += 1
                 except Exception as inner_e:
@@ -383,7 +425,7 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
                 INSERT INTO block_embeddings (block_id, model, dimensions, vector)
                 VALUES (%s, %s, %s, %s)
                 """,
-                (item["block_id"], EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, str(emb))
+                (item["block_id"], EMBEDDING_MODEL_TAG, EMBEDDING_DIMENSIONS, str(emb))
             )
         embedded_count += len(batch)
 

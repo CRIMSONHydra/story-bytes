@@ -5,9 +5,30 @@ import { randomUUID } from 'crypto';
 import { unlink, copyFile, mkdir, rm } from 'fs/promises';
 import { resolve, basename } from 'path';
 import { getAdminStories, deleteStory, getSeriesTitleForStory, getStoryIdsBySeriesTitle, getDistinctSeries } from '../services/admin';
+import { getRagTrace } from '../services/db';
 import { getProjectRoot } from './assets';
 
 const uuidSchema = z.string().uuid();
+
+/** M9: inspect a RAG trace by id (debugging / eval). */
+export const handleGetTrace = async (req: Request, res: Response) => {
+  const parsed = uuidSchema.safeParse(req.params.traceId);
+  if (!parsed.success) {
+    res.status(400).json({ error: { code: 'INVALID_ID', message: 'Invalid trace ID' } });
+    return;
+  }
+  try {
+    const trace = await getRagTrace(parsed.data);
+    if (!trace) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Trace not found' } });
+      return;
+    }
+    res.json(trace);
+  } catch (error) {
+    console.error('Trace lookup error:', error);
+    res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to load trace' } });
+  }
+};
 
 const PYTHON_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 

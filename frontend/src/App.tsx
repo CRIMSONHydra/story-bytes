@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import './App.css';
 import StoryList from './pages/StoryList';
@@ -5,6 +6,10 @@ import Reader from './pages/Reader';
 import ChatPage from './pages/ChatPage';
 import AdminPage from './pages/AdminPage';
 import RecapPage from './pages/RecapPage';
+
+// Lazy-loaded so the heavy vis-network dependency is only fetched when a reader
+// actually opens the knowledge graph.
+const GraphPage = lazy(() => import('./pages/GraphPage'));
 
 function App() {
   return (
@@ -24,6 +29,14 @@ function App() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/story/:storyId/recap" element={<RecapPage />} />
+            <Route
+              path="/story/:storyId/graph"
+              element={
+                <Suspense fallback={<div className="loading">Loading graph...</div>}>
+                  <GraphPage />
+                </Suspense>
+              }
+            />
             <Route path="/story/:storyId/chapter/:chapterId" element={<Reader />} />
           </Routes>
         </main>

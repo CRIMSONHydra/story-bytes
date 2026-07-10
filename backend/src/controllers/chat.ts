@@ -5,7 +5,9 @@
 
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { answerQuery } from '../services/rag';
+import { DEFAULT_USER_ID } from '../services/spoilerScope';
 
 /**
  * Request body schema for chat endpoint.
@@ -34,12 +36,16 @@ export const handleChat = async (req: Request, res: Response) => {
   }
 
   const { query, storyId, currentChapter, mode } = validation.data;
+  const userId = (req.headers['x-user-id'] as string) || DEFAULT_USER_ID;
 
   try {
-    const result = await answerQuery(query, storyId, currentChapter, mode);
+    const result = await answerQuery(query, storyId, currentChapter, mode, userId);
     res.json(result);
   } catch (error) {
-    console.error('Chat controller error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    // Hard pipeline failure (embedding/model/DB) surfaces as 502 with a correlation id — not a
+    // 200 apology that hides the outage from monitoring (Improvement Plan M9 / §3.4).
+    const traceId = randomUUID();
+    console.error(`Chat pipeline failed (trace ${traceId}):`, error);
+    res.status(502).json({ error: { code: 'chat_pipeline_failed', message: 'The assistant is temporarily unavailable.', traceId } });
   }
 };

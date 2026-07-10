@@ -4,6 +4,7 @@
  */
 
 import { pool } from '../db/pool';
+import { EMBEDDING_MODEL_TAG } from './llm';
 
 /**
  * Represents a text block with similarity score from vector search.
@@ -75,7 +76,7 @@ export const findSimilarBlocks = async (
       JOIN chapters c ON cb.chapter_id = c.chapter_id
       JOIN stories s ON c.story_id = s.story_id
       WHERE
-        be.model = 'gemini-embedding-001'
+        be.model = '${EMBEDDING_MODEL_TAG}'
         AND (
           (c.story_id = ANY($2::uuid[]) AND c.story_id != $3)
           OR (c.story_id = $3 AND ($4::int IS NULL OR c.chapter_order <= $4))
@@ -110,7 +111,7 @@ export const findSimilarBlocks = async (
     JOIN chapter_blocks cb ON be.block_id = cb.block_id
     JOIN chapters c ON cb.chapter_id = c.chapter_id
     WHERE
-      be.model = 'gemini-embedding-001'
+      be.model = '${EMBEDDING_MODEL_TAG}'
       AND ($2::uuid IS NULL OR c.story_id = $2)
       AND ($3::int IS NULL OR c.chapter_order <= $3)
     ORDER BY be.vector <=> $1 ASC
@@ -512,6 +513,36 @@ export const upsertReadingProgress = async (userId: string, storyId: string, cha
            updated_at = NOW()`,
     [userId, storyId, chapterOrder]
   );
+};
+
+/**
+ * M9: persist a RAG trace (fire-and-forget from the pipeline; never throws to the caller's flow).
+ */
+export interface RagTrace {
+  traceId: string;
+  storyId: string | null;
+  mode: string;
+  boundaryChapter: number | null;
+  query: string;
+  answer: string;
+  confidence: string;
+  sourceCount: number;
+  insufficientContext: boolean;
+}
+
+export const saveRagTrace = async (t: RagTrace): Promise<void> => {
+  await pool.query(
+    `INSERT INTO rag_traces
+       (trace_id, story_id, mode, boundary_chapter, query, answer, confidence, source_count, insufficient_context)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (trace_id) DO NOTHING`,
+    [t.traceId, t.storyId, t.mode, t.boundaryChapter, t.query, t.answer, t.confidence, t.sourceCount, t.insufficientContext],
+  );
+};
+
+export const getRagTrace = async (traceId: string) => {
+  const result = await pool.query('SELECT * FROM rag_traces WHERE trace_id = $1', [traceId]);
+  return result.rows[0] ?? null;
 };
 
 /**

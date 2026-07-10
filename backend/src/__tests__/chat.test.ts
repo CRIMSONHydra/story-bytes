@@ -31,6 +31,7 @@ vi.mock('../services/db', () => ({
 }));
 
 import { answerQuery } from '../services/rag';
+import { DEFAULT_USER_ID } from '../services/spoilerScope';
 
 const TEST_UUID = '123e4567-e89b-12d3-a456-426614174000';
 
@@ -44,6 +45,9 @@ describe('POST /api/chat', () => {
       answer: 'The protagonist is named Alice.',
       sources: [{ chapterOrder: 1, blockId: 'b1', title: 'Chapter 1' }],
       images: [{ assetId: TEST_UUID, href: 'images/alice.jpg', description: 'Alice portrait' }],
+      confidence: 'high' as const,
+      insufficientContext: false,
+      traceId: TEST_UUID,
     };
     vi.mocked(answerQuery).mockResolvedValueOnce(mockResult);
 
@@ -57,7 +61,9 @@ describe('POST /api/chat', () => {
     });
     expect(response.body.sources).toBeDefined();
     expect(response.body.images).toBeDefined();
-    expect(answerQuery).toHaveBeenCalledWith('Who is the protagonist?', TEST_UUID, 3, undefined);
+    expect(answerQuery).toHaveBeenCalledWith(
+      'Who is the protagonist?', TEST_UUID, 3, undefined, DEFAULT_USER_ID
+    );
   });
 
   it('missing query returns 400', async () => {
@@ -83,6 +89,9 @@ describe('POST /api/chat', () => {
       answer: 'Based on the evidence, this theory is plausible.',
       sources: [],
       images: [],
+      confidence: 'medium' as const,
+      insufficientContext: false,
+      traceId: TEST_UUID,
     };
     vi.mocked(answerQuery).mockResolvedValueOnce(mockResult);
 
@@ -95,18 +104,20 @@ describe('POST /api/chat', () => {
       'Could the villain be the hero?',
       TEST_UUID,
       undefined,
-      'theory'
+      'theory',
+      DEFAULT_USER_ID
     );
   });
 
-  it('returns 500 on service error', async () => {
+  it('returns 502 with a correlation id on pipeline failure', async () => {
     vi.mocked(answerQuery).mockRejectedValueOnce(new Error('LLM API timeout'));
 
     const response = await request(createApp())
       .post('/api/chat')
       .send({ query: 'What happened?', storyId: TEST_UUID });
 
-    expect(response.status).toBe(500);
-    expect(response.body).toMatchObject({ error: 'Internal server error' });
+    expect(response.status).toBe(502);
+    expect(response.body.error).toMatchObject({ code: 'chat_pipeline_failed' });
+    expect(typeof response.body.error.traceId).toBe('string');
   });
 });

@@ -5,6 +5,7 @@
  */
 
 import { getModel, generateEmbedding } from './llm';
+import { MAIN_MODEL } from '../config/models';
 import {
   findSimilarBlocks,
   findSimilarExternalKnowledge,
@@ -16,15 +17,62 @@ import {
   getStoriesInSeries,
   getImagesFromChapters,
 } from './db';
-import { getForeshadowLinks, getLivePayoffSummaries } from './graph';
+import {
+  getForeshadowLinks, getLivePayoffSummaries, linkEntities, getEgoNetwork, getOpenThreads,
+  type GraphEntity, type NamedEdge,
+} from './graph';
 import { checkPayoffLeak } from './answerGuard';
+import { resolveSpoilerScope, DEFAULT_USER_ID } from './spoilerScope';
+import { saveRagTrace } from './db';
+import { randomUUID } from 'crypto';
+
+interface ParsedAnswer {
+  answer: string;
+  citations: string[];
+  confidence: Confidence;
+  insufficientContext: boolean;
+}
+
+/**
+ * Parse the model's structured answer JSON. Degrades gracefully: if the output isn't the expected
+ * JSON (older prompts, mocked plain-text responses), the whole text becomes the answer with no
+ * citations and medium confidence, so callers never lose the answer.
+ */
+const parseStructuredAnswer = (raw: string): ParsedAnswer => {
+  let t = (raw || '').trim();
+  if (t.startsWith('```')) {
+    const nl = t.indexOf('\n');
+    t = nl >= 0 ? t.slice(nl + 1) : t.slice(3);
+    if (t.endsWith('```')) t = t.slice(0, -3);
+    t = t.trim();
+  }
+  try {
+    const o = JSON.parse(t) as Record<string, unknown>;
+    if (o && typeof o.answer === 'string') {
+      const conf = o.confidence;
+      return {
+        answer: o.answer,
+        citations: Array.isArray(o.citations) ? o.citations.map(String) : [],
+        confidence: conf === 'high' || conf === 'low' ? conf : 'medium',
+        insufficientContext: Boolean(o.insufficient_context),
+      };
+    }
+  } catch {
+    // not JSON — fall through to plain-text treatment
+  }
+  return { answer: (raw || '').trim(), citations: [], confidence: 'medium', insufficientContext: false };
+};
 
 export type ChatMode = 'recall' | 'foreshadowing' | 'theory';
+
+export type Confidence = 'high' | 'medium' | 'low';
 
 export interface ChatSource {
   chapterOrder: number;
   blockId: string;
   title: string;
+  snippet?: string;
+  sourceType?: 'block' | 'graph' | 'external';
 }
 
 export interface ChatImage {
@@ -38,6 +86,9 @@ export interface ChatResponse {
   answer: string;
   sources: ChatSource[];
   images: ChatImage[];
+  confidence: Confidence;
+  insufficientContext: boolean;
+  traceId: string;
 }
 
 /**
@@ -111,6 +162,29 @@ RULES:
 };
 
 /**
+ * Format linked entities + their ego-network into a compact, spoiler-safe KNOWLEDGE GRAPH block.
+ * Everything here is already chapter-gated by the graph queries (facts known as of the boundary).
+ */
+const formatGraphContext = (entities: GraphEntity[], edges: NamedEdge[]): string => {
+  if (entities.length === 0) return '';
+  const lines = entities.map((e) => {
+    const aka = e.aliases.length > 0 ? ` (aka ${e.aliases.join(', ')})` : '';
+    const state = e.latestState ? ` — ${e.latestState}` : '';
+    const rels = edges
+      .filter((r) => r.sourceName === e.name || r.targetName === e.name)
+      .slice(0, 6)
+      .map((r) => {
+        const other = r.sourceName === e.name ? r.targetName : r.sourceName;
+        const dir = r.sourceName === e.name ? `${r.relType} -> ${other}` : `${other} ${r.relType} ->`;
+        const until = r.untilChapter !== null ? ` (Ch. ${r.sinceChapter}–${r.untilChapter})` : ` (since Ch. ${r.sinceChapter})`;
+        return `    - ${dir}${until}${r.description ? `: ${r.description}` : ''}`;
+      });
+    return `- ${e.name} [${e.entityType}]${aka}${state}\n${rels.join('\n')}`.trimEnd();
+  });
+  return `\n\nKNOWLEDGE GRAPH (facts known as of the reader's current chapter):\n${lines.join('\n')}`;
+};
+
+/**
  * Answers a user's question about a story using RAG with hybrid search
  * and image-aware responses.
  */
@@ -118,19 +192,29 @@ export const answerQuery = async (
   query: string,
   storyId?: string,
   currentChapter?: number,
-  mode: ChatMode = 'recall'
+  mode: ChatMode = 'recall',
+  userId: string = DEFAULT_USER_ID
 ): Promise<ChatResponse> => {
+  const traceId = randomUUID();
   try {
+    // Resolve the spoiler boundary server-side when a story is scoped (default-deny: an omitted
+    // currentChapter falls back to reading_progress, then 0 — never "everything"). priorVolumeIds
+    // come from resolveSpoilerScope, ordered by volume_number (not the old lexicographic title sort).
+    const scope = storyId ? await resolveSpoilerScope(storyId, currentChapter, userId) : null;
+    const boundary = scope ? scope.maxChapterOrder : currentChapter;
+    const priorVolumeIds = scope && scope.priorVolumeIds.length > 0 ? scope.priorVolumeIds : undefined;
+
     // Handle summary queries using the summarization pipeline
     if (detectSummaryIntent(query) && storyId) {
       const seriesStories = await getStoriesInSeries(storyId);
       const currentIdx = seriesStories.findIndex(s => s.story_id === storyId);
 
-      // Summarize each volume up to and including the current one
+      // Summarize each volume up to and including the current one; prior volumes are fully read,
+      // the current one is capped at the resolved boundary.
       const summaryParts: string[] = [];
       for (let i = 0; i <= currentIdx; i++) {
         const vol = seriesStories[i];
-        const maxChapter = (i < currentIdx) ? 999 : (currentChapter ?? 999);
+        const maxChapter = (i < currentIdx) ? 999 : (boundary ?? 0);
         const summary = await summarizeStory(vol.story_id, maxChapter);
         summaryParts.push(`## ${vol.title}\n\n${summary}`);
       }
@@ -139,30 +223,41 @@ export const answerQuery = async (
         answer: summaryParts.join('\n\n---\n\n'),
         sources: [],
         images: [],
+        confidence: 'high',
+        insufficientContext: false,
+        traceId,
       };
     }
 
     // Auto-detect foreshadowing mode from query if mode is recall
     const effectiveMode = mode === 'recall' && detectForeshadowingIntent(query) ? 'foreshadowing' : mode;
 
-    // Step 1: Generate embedding
-    const embedding = await generateEmbedding(query);
+    // Step 1: Generate the query embedding (gemini-embedding-2 uses the in-prompt query instruction).
+    const embedding = await generateEmbedding(query, 'query');
 
-    // Step 1.5: Look up series for cross-volume search
-    let priorVolumeIds: string[] | undefined;
+    // Step 1.7: GraphRAG — link the query to known entities (spoiler-visible aliases only), expand
+    // the keyword arm with those aliases ("Dead End" also retrieves "Ruijerd" passages), and build a
+    // KNOWLEDGE GRAPH context block. No-op when the story has no graph. Non-fatal.
+    let graphContext = '';
+    let keywordQuery = query;
     if (storyId) {
-      const seriesStories = await getStoriesInSeries(storyId);
-      if (seriesStories.length > 1) {
-        // All volumes before the current one in the series (sorted by title)
-        const currentIdx = seriesStories.findIndex(s => s.story_id === storyId);
-        priorVolumeIds = seriesStories.slice(0, currentIdx).map(s => s.story_id);
+      try {
+        const linked = await linkEntities(query, storyId, boundary ?? 0);
+        if (linked.length > 0) {
+          const aliasTerms = [...new Set(linked.flatMap((e) => [e.name, ...e.aliases]))];
+          keywordQuery = `${query} ${aliasTerms.join(' ')}`;
+          const ego = await getEgoNetwork(linked.map((e) => e.entityId), storyId, boundary ?? 0);
+          graphContext = formatGraphContext(linked, ego);
+        }
+      } catch (err) {
+        console.error('Graph linking failed (non-fatal):', err);
       }
     }
 
-    // Step 2: Hybrid search — semantic + keyword, cross-volume aware
+    // Step 2: Hybrid search — semantic + keyword, cross-volume aware (resolved boundary + prior volumes)
     const [semanticBlocks, keywordBlocks] = await Promise.all([
-      findSimilarBlocks(embedding, storyId, currentChapter, 5, priorVolumeIds),
-      findBlocksByKeyword(query, storyId, currentChapter, 5, priorVolumeIds),
+      findSimilarBlocks(embedding, storyId, boundary, 5, priorVolumeIds),
+      findBlocksByKeyword(keywordQuery, storyId, boundary, 5, priorVolumeIds),
     ]);
 
     // Merge and deduplicate, preferring semantic scores
@@ -183,8 +278,8 @@ export const answerQuery = async (
     // Step 3: Image retrieval — from asset embeddings + from matched chapters
     const matchedChapterOrders = [...new Set(mergedBlocks.map(b => b.chapter_order))];
     const [relevantImages, chapterImages] = await Promise.all([
-      findRelevantImages(embedding, storyId, currentChapter),
-      storyId ? getImagesFromChapters(matchedChapterOrders, storyId, currentChapter) : Promise.resolve([]),
+      findRelevantImages(embedding, storyId, boundary),
+      storyId ? getImagesFromChapters(matchedChapterOrders, storyId, boundary) : Promise.resolve([]),
     ]);
 
     let externalContext = '';
@@ -203,11 +298,11 @@ export const answerQuery = async (
       }
     }
 
-    // Step 5: Format Context
+    // Step 5: Format Context — label each block [S1]..[Sn] so the model can cite specific sources.
     const storyContext = mergedBlocks
-      .map((block) => {
+      .map((block, i) => {
         const volumePrefix = block.story_title ? `${block.story_title}, ` : '';
-        return `[${volumePrefix}Chapter ${block.chapter_order}: ${block.title}]\n${block.text_content}`;
+        return `[S${i + 1}] [${volumePrefix}Chapter ${block.chapter_order}: ${block.title}]\n${block.text_content}`;
       })
       .join('\n\n');
 
@@ -225,11 +320,17 @@ export const answerQuery = async (
     let foreshadowContext = '';
     if (effectiveMode === 'foreshadowing' && storyId) {
       try {
-        const seeds = await getForeshadowLinks(storyId, currentChapter ?? 0);
+        const seeds = await getForeshadowLinks(storyId, boundary ?? 0);
         if (seeds.length > 0) {
           foreshadowContext = '\n\nFORESHADOWING SEEDS (details already read that are worth keeping in mind — '
             + 'do NOT speculate about their future payoff as fact):\n'
             + seeds.map(s => `- [Ch. ${s.setupChapter}] ${s.setupSummary} — ${s.hint}`).join('\n');
+        }
+        // OPEN PLOT THREADS: unresolved threads as of the boundary, to ground foreshadowing.
+        const threads = await getOpenThreads(storyId, boundary ?? 0);
+        if (threads.length > 0) {
+          foreshadowContext += '\n\nOPEN PLOT THREADS (unresolved as of the current chapter):\n'
+            + threads.map(t => `- ${t.name}: ${t.latestBeat}`).join('\n');
         }
       } catch (err) {
         console.error('Foreshadowing seed lookup failed (non-fatal):', err);
@@ -237,11 +338,12 @@ export const answerQuery = async (
     }
 
     // Step 6: Generate Answer
-    const systemPrompt = buildSystemPrompt(effectiveMode, currentChapter);
+    const systemPrompt = buildSystemPrompt(effectiveMode, boundary);
     const prompt = `${systemPrompt}
 
 STORY CONTEXT (Read so far):
 ${storyContext || '(no matching content found)'}
+${graphContext}
 
 EXTERNAL KNOWLEDGE (Theories/Facts):
 ${externalContext || 'None'}
@@ -249,19 +351,29 @@ ${imageContext}${foreshadowContext}
 
 User Question: ${query}
 
-Answer:`;
+Respond as STRICT JSON (no markdown fences):
+{"answer": "<your answer in prose>",
+ "citations": ["S1", "S3", ...],   // the [S#] labels you actually used from STORY CONTEXT
+ "confidence": "high|medium|low",   // how well the context supports the answer
+ "insufficient_context": true|false} // true if the read chapters don't contain the answer`;
 
     const model = getModel();
     const temperature = effectiveMode === 'theory' ? undefined : 0;
     const result = await model.generateContent(prompt, { temperature });
-    let answer = result.response.text();
+    const rawOutput = result.response.text();
+
+    // Parse structured output; degrade gracefully to plain text if the model didn't return JSON.
+    const parsed = parseStructuredAnswer(rawOutput);
+    let answer = parsed.answer;
+    const confidence: Confidence = parsed.confidence;
+    const insufficientContext = parsed.insufficientContext;
 
     // Foreshadowing backstop (plan §2.14.4): the payoff never entered the prompt, but as a defense
     // against the model reconstructing it from training data, check the answer against the live
     // payoff summaries and fail closed if it leaks.
     if (effectiveMode === 'foreshadowing' && storyId && foreshadowContext) {
       try {
-        const payoffs = await getLivePayoffSummaries(storyId, currentChapter ?? 0);
+        const payoffs = await getLivePayoffSummaries(storyId, boundary ?? 0);
         if (payoffs.length > 0 && await checkPayoffLeak(answer, payoffs)) {
           answer =
             "I can point to a few details worth keeping in mind, but I won't speculate about where they "
@@ -272,11 +384,19 @@ Answer:`;
       }
     }
 
-    // Build sources from blocks used
-    const sources: ChatSource[] = mergedBlocks.map(b => ({
+    // Build sources. Prefer cited-only (labels validated against the retrieved set — hallucinated
+    // labels dropped). If the model returned no valid citations (or didn't produce JSON), fall back
+    // to the retrieved blocks so we never return an answer with zero provenance.
+    const citedIdx = parsed.citations
+      .map(label => parseInt(label.replace(/[^0-9]/g, ''), 10) - 1)
+      .filter(i => Number.isInteger(i) && i >= 0 && i < mergedBlocks.length);
+    const chosen = citedIdx.length > 0 ? [...new Set(citedIdx)].map(i => mergedBlocks[i]) : mergedBlocks;
+    const sources: ChatSource[] = chosen.map(b => ({
       chapterOrder: b.chapter_order,
       blockId: b.block_id,
       title: b.title,
+      snippet: (b.text_content || '').trim().slice(0, 200),
+      sourceType: 'block' as const,
     }));
 
     // Build image list — combine asset-embedded images + chapter illustrations
@@ -300,14 +420,19 @@ Answer:`;
       }
     }
 
-    return { answer, sources, images };
+    // Fire-and-forget trace for debugging + the eval retrieval suite (never blocks the response).
+    void saveRagTrace({
+      traceId, storyId: storyId ?? null, mode: effectiveMode, boundaryChapter: boundary ?? null,
+      query, answer, confidence, sourceCount: sources.length, insufficientContext,
+    }).catch(err => console.error('saveRagTrace failed (non-fatal):', err));
+
+    return { answer, sources, images, confidence, insufficientContext, traceId };
   } catch (error) {
-    console.error('Error in RAG answerQuery:', error);
-    return {
-      answer: "I'm sorry, I encountered an error while trying to answer your question.",
-      sources: [],
-      images: [],
-    };
+    // Hard pipeline failure: log and rethrow so the controller returns 502 (monitoring-visible),
+    // instead of masking an outage as a 200 "apology". Insufficient-context is NOT an error — that
+    // is a normal 200 with insufficientContext=true handled above.
+    console.error(`Error in RAG answerQuery (trace ${traceId}):`, error);
+    throw error;
   }
 };
 
@@ -319,7 +444,7 @@ export const summarizeStory = async (
   storyId: string,
   upToChapter: number
 ): Promise<string> => {
-  const modelName = 'gemini-2.5-flash';
+  const modelName = MAIN_MODEL;
 
   // Check cache first
   const cached = await getCachedSummary(storyId, upToChapter, modelName);

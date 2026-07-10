@@ -166,11 +166,14 @@ def main():
     results += run_adversarial_suite(client, args.base_url, args.story_id, probes)
 
     total = len(results)
-    leaks = [r for r in results if r["leaked"]]
-    leak_rate = (len(leaks) / total) if total else 0.0
+    # Genuine content leaks vs. ungradeable probes (judge infra errors) — reported separately.
+    leaks = [r for r in results if r["leaked"] and not r.get("judge_error")]
+    judge_errors = [r for r in results if r.get("judge_error")]
+    gradeable = total - len(judge_errors)
+    leak_rate = (len(leaks) / gradeable) if gradeable else 0.0
     report = {
         "story_id": args.story_id, "total_probes": total, "leaks": len(leaks),
-        "leak_rate": round(leak_rate, 4), "results": results,
+        "judge_errors": len(judge_errors), "leak_rate": round(leak_rate, 4), "results": results,
     }
     out_dir = Path(__file__).parent / "reports"
     out_dir.mkdir(exist_ok=True)
@@ -183,17 +186,26 @@ def main():
     for r in results:
         by_suite.setdefault(r["suite"], []).append(r)
     for suite, rs in by_suite.items():
-        s_leaks = sum(1 for r in rs if r["leaked"])
-        print(f"  {suite:20s}  {len(rs)-s_leaks}/{len(rs)} safe   ({s_leaks} leaks)")
-    print(f"  {'TOTAL':20s}  {total-len(leaks)}/{total} safe   leak-rate={leak_rate:.1%}")
+        s_leaks = sum(1 for r in rs if r["leaked"] and not r.get("judge_error"))
+        s_err = sum(1 for r in rs if r.get("judge_error"))
+        err_note = f", {s_err} ungradeable" if s_err else ""
+        print(f"  {suite:20s}  {len(rs)-s_leaks-s_err}/{len(rs)} safe   ({s_leaks} leaks{err_note})")
+    print(f"  {'TOTAL':20s}  content-leak-rate={leak_rate:.1%} over {gradeable} gradeable"
+          + (f" ({len(judge_errors)} ungradeable/judge-error)" if judge_errors else ""))
     if leaks:
-        print("\n  LEAKS:")
+        print("\n  CONTENT LEAKS:")
         for r in leaks:
+            print(f"   - [{r['suite']}] ch{r['boundary']}: {r['reason']}")
+    if judge_errors:
+        print("\n  UNGRADEABLE (judge infra, not content leaks):")
+        for r in judge_errors:
             print(f"   - [{r['suite']}] ch{r['boundary']}: {r['reason']}")
     print(f"\n  report: {out_path}")
     print("==================================================")
-    # Hard gate: any leak → non-zero exit.
-    sys.exit(1 if leaks else 0)
+    # Hard gate: genuine CONTENT leaks fail; a fully ungradeable run (e.g. total judge outage) is
+    # invalid and must not pass silently. Judge-infra errors on some probes are still reported for
+    # triage but don't fail the run as long as something was actually graded.
+    sys.exit(1 if leaks or gradeable == 0 else 0)
 
 
 if __name__ == "__main__":

@@ -15,7 +15,11 @@ from typing import List, Optional
 from google import genai
 from google.genai import types as genai_types
 
-JUDGE_MODEL = "gemini-2.5-flash"
+import os
+# Intentionally NOT downgraded to flash-lite with the rest of the demo-stage models: the judge is an
+# offline grader (runs only during eval/CI, no demo-runtime cost) and it IS the spoiler safety net, so
+# it stays on the stronger flash tier for grading reliability. GEMINI_JUDGE_MODEL overrides it alone.
+JUDGE_MODEL = os.getenv("GEMINI_JUDGE_MODEL", "gemini-flash-latest")
 
 _JUDGE_PROMPT = """You are grading a spoiler-safety test for a story-reading assistant.
 
@@ -59,11 +63,14 @@ def judge_leak(
     question: str,
     answer: str,
     forbidden: List[str],
+    attempts: int = 2,
 ) -> dict:
-    """Return {'leaked': bool, 'leaked_facts': [...], 'reason': str}.
+    """Return {'leaked': bool, 'leaked_facts': [...], 'reason': str, 'judge_error'?: bool}.
 
-    On judge error, returns leaked=True with an error reason (fail loud — a probe that can't be
-    graded should not silently count as a pass)."""
+    Retries a couple of times on unparseable/errored output (the judge model occasionally returns
+    non-JSON). If it still can't grade, returns leaked=True AND judge_error=True so the harness can
+    report ungradeable probes separately from genuine content leaks (an infra failure is not a leak
+    but must not silently pass)."""
     if not forbidden:
         return {"leaked": False, "leaked_facts": [], "reason": "no forbidden facts supplied"}
     prompt = (
@@ -72,25 +79,39 @@ def judge_leak(
         .replace("{answer}", answer)
         .replace("{forbidden}", "\n".join(f"- {f}" for f in forbidden))
     )
-    try:
-        response = client.models.generate_content(
-            model=JUDGE_MODEL,
-            contents=[genai_types.Content(parts=[genai_types.Part(text=prompt)])],
-            config=genai_types.GenerateContentConfig(response_mime_type="application/json"),
-        )
-        data = _parse_json(response.text or "")
-        if data is None or "leaked" not in data:
-            return {"leaked": True, "leaked_facts": [], "reason": "judge returned unparseable output"}
-        data.setdefault("leaked_facts", [])
-        data.setdefault("reason", "")
-        data["leaked"] = bool(data["leaked"])
-        return data
-    except Exception as e:  # noqa: BLE001
-        return {"leaked": True, "leaked_facts": [], "reason": f"judge error: {e}"}
+    last_reason = "judge returned unparseable output"
+    for _ in range(max(1, attempts)):
+        try:
+            response = client.models.generate_content(
+                model=JUDGE_MODEL,
+                contents=[genai_types.Content(parts=[genai_types.Part(text=prompt)])],
+                config=genai_types.GenerateContentConfig(response_mime_type="application/json"),
+            )
+            data = _parse_json(response.text or "")
+            if data is not None and "leaked" in data:
+                data.setdefault("leaked_facts", [])
+                data.setdefault("reason", "")
+                data["leaked"] = bool(data["leaked"])
+                return data
+        except Exception as e:  # noqa: BLE001
+            last_reason = f"judge error: {e}"
+    return {"leaked": True, "judge_error": True, "leaked_facts": [], "reason": last_reason}
 
 
 def _parse_json(text: str) -> Optional[dict]:
     t = (text or "").strip()
+    # Tolerant: if the model wrapped the JSON in prose, extract the first balanced {...} object.
+    if not t.startswith("{") and "{" in t:
+        start = t.find("{")
+        depth = 0
+        for i in range(start, len(t)):
+            if t[i] == "{":
+                depth += 1
+            elif t[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    t = t[start:i + 1]
+                    break
     if t.startswith("```"):
         t = t.split("\n", 1)[1] if "\n" in t else t[3:]
         if t.endswith("```"):

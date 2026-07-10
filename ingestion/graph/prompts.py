@@ -6,7 +6,14 @@ prompt invalidates prior runs and lets --rebuild re-extract deterministically.
 
 PROMPT_VERSION = 1
 
-GRAPH_MODEL = "gemini-2.5-flash"
+# GRAPH_MODEL is centralized in ingestion/models.py (single source; the demo-stage default and the
+# GEMINI_MAIN_MODEL override both live there). The dual import supports both run modes: as a package
+# (pytest / `python -m`) and as a standalone CLI (`uv run python ingestion/graph/extract_graph.py`,
+# where `ingestion/` — not the repo root — is on sys.path).
+try:
+    from ..models import GRAPH_MODEL  # ingestion.graph.prompts
+except ImportError:  # pragma: no cover - standalone CLI
+    from models import GRAPH_MODEL
 
 # ---------------------------------------------------------------------------
 # Per-chapter graph extraction (chapter-local: only sees text up to this chapter)

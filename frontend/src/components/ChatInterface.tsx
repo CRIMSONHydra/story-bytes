@@ -7,11 +7,17 @@ interface ChatInterfaceProps {
   totalChapters?: number;
 }
 
+type SourceType = 'block' | 'graph' | 'external';
+
 interface ChatSource {
   chapterOrder: number;
   blockId: string;
   title: string;
+  snippet?: string;
+  sourceType?: SourceType;
 }
+
+type Confidence = 'high' | 'medium' | 'low';
 
 interface ChatImage {
   assetId: string;
@@ -25,7 +31,22 @@ interface Message {
   content: string;
   sources?: ChatSource[];
   images?: ChatImage[];
+  confidence?: Confidence;
+  insufficientContext?: boolean;
+  traceId?: string;
 }
+
+const CONFIDENCE_LABELS: Record<Confidence, string> = {
+  high: 'High confidence',
+  medium: 'Medium confidence',
+  low: 'Low confidence',
+};
+
+const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
+  block: 'Story text',
+  graph: 'Knowledge graph',
+  external: 'External source',
+};
 
 type ChatMode = 'recall' | 'foreshadowing' | 'theory';
 
@@ -101,6 +122,9 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
         content: data.answer,
         sources: data.sources,
         images: data.images,
+        confidence: data.confidence,
+        insufficientContext: data.insufficientContext,
+        traceId: data.traceId,
       }]);
     } catch (error) {
       console.error('Chat error:', error);
@@ -177,20 +201,45 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
             <div className="bubble">
               <ReactMarkdown>{msg.content}</ReactMarkdown>
 
+              {/* Confidence + context signals (assistant only) */}
+              {msg.role === 'ai' && (msg.confidence || msg.insufficientContext) && (
+                <div className="chat-signals">
+                  {msg.confidence && (
+                    <span
+                      className={`confidence-badge confidence-${msg.confidence}`}
+                      title={msg.traceId ? `Trace: ${msg.traceId}` : undefined}
+                    >
+                      {CONFIDENCE_LABELS[msg.confidence]}
+                    </span>
+                  )}
+                  {msg.insufficientContext && (
+                    <span className="limited-info-note" title="The answer may be incomplete for your current chapter.">
+                      limited info
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Source citations */}
               {msg.sources && msg.sources.length > 0 && (
                 <div className="chat-sources">
                   <span className="sources-label">Sources:</span>
-                  {msg.sources.slice(0, 5).map((src, i) => (
-                    <button
-                      key={i}
-                      className="source-link"
-                      onClick={() => handleSourceClick(src)}
-                      title={src.title}
-                    >
-                      Ch. {src.chapterOrder}
-                    </button>
-                  ))}
+                  {msg.sources.slice(0, 5).map((src, i) => {
+                    const type: SourceType = src.sourceType ?? 'block';
+                    const tooltip = src.snippet
+                      ? `${SOURCE_TYPE_LABELS[type]} — ${src.snippet}`
+                      : `${SOURCE_TYPE_LABELS[type]}: ${src.title}`;
+                    return (
+                      <button
+                        key={i}
+                        className={`source-link source-type-${type}`}
+                        onClick={() => handleSourceClick(src)}
+                        title={tooltip}
+                      >
+                        {type === 'graph' ? 'Graph' : type === 'external' ? 'Web' : `Ch. ${src.chapterOrder}`}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 

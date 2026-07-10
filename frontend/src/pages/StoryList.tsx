@@ -141,6 +141,9 @@ export default function StoryList() {
                   <Link to={`/story/${story.story_id}/recap`} className="recap-card-link">
                     Recap &amp; continue
                   </Link>
+                  <Link to={`/story/${story.story_id}/graph`} className="recap-card-link recap-card-link-sm">
+                    Graph
+                  </Link>
                 </div>
               </div>
             );
@@ -185,6 +188,12 @@ export default function StoryList() {
                           className="recap-card-link recap-card-link-sm"
                         >
                           Recap
+                        </Link>
+                        <Link
+                          to={`/story/${story.story_id}/graph`}
+                          className="recap-card-link recap-card-link-sm"
+                        >
+                          Graph
                         </Link>
                       </div>
                     );
