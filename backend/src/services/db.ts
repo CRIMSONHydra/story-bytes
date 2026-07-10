@@ -5,6 +5,7 @@
 
 import { pool } from '../db/pool';
 import { EMBEDDING_MODEL_TAG } from './llm';
+import { logger } from './logger';
 
 /**
  * Represents a text block with similarity score from vector search.
@@ -94,7 +95,7 @@ export const findSimilarBlocks = async (
       ]);
       return result.rows;
     } catch (error) {
-      console.error('Error finding similar blocks (cross-volume):', error);
+      logger.error({ err: error }, 'Error finding similar blocks (cross-volume)');
       return [];
     }
   }
@@ -127,7 +128,7 @@ export const findSimilarBlocks = async (
     ]);
     return result.rows;
   } catch (error) {
-    console.error('Error finding similar blocks:', error);
+    logger.error({ err: error }, 'Error finding similar blocks');
     return [];
   }
 };
@@ -163,7 +164,7 @@ export const findSimilarExternalKnowledge = async (
     ]);
     return result.rows;
   } catch (error) {
-    console.error('Error finding similar external knowledge:', error);
+    logger.error({ err: error }, 'Error finding similar external knowledge');
     return [];
   }
 };
@@ -200,7 +201,7 @@ export const insertExternalKnowledge = async (
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error inserting external knowledge:', error);
+    logger.error({ err: error }, 'Error inserting external knowledge');
     throw error;
   } finally {
     client.release();
@@ -305,7 +306,7 @@ export const findRelevantImages = async (
     ]);
     return result.rows;
   } catch (error) {
-    console.error('Error finding relevant images:', error);
+    logger.error({ err: error }, 'Error finding relevant images');
     return [];
   }
 };
@@ -344,7 +345,7 @@ export const getImagesFromChapters = async (
     ]);
     return result.rows;
   } catch (error) {
-    console.error('Error getting chapter images:', error);
+    logger.error({ err: error }, 'Error getting chapter images');
     return [];
   }
 };
@@ -407,7 +408,7 @@ export const findBlocksByKeyword = async (
       const result = await pool.query(sql, [query, allSeriesIds, storyId, currentChapter !== undefined ? currentChapter : null, limit]);
       return result.rows;
     } catch (error) {
-      console.error('Error in keyword search (cross-volume):', error);
+      logger.error({ err: error }, 'Error in keyword search (cross-volume)');
       return [];
     }
   }
@@ -438,7 +439,7 @@ export const findBlocksByKeyword = async (
     ]);
     return result.rows;
   } catch (error) {
-    console.error('Error in keyword search:', error);
+    logger.error({ err: error }, 'Error in keyword search');
     return [];
   }
 };

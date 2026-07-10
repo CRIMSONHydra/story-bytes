@@ -11,6 +11,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { resolveSpoilerScope, DEFAULT_USER_ID } from '../services/spoilerScope';
 import { buildRecap } from '../services/recap';
+import { asyncHandler, fromZod, invalidId } from '../middleware/errors';
 
 const querySchema = z.object({
   upToChapter: z.coerce.number().int().min(0).optional(),
@@ -19,29 +20,18 @@ const querySchema = z.object({
 
 const uuidSchema = z.string().uuid();
 
-export const handleGetRecap = async (req: Request, res: Response) => {
+export const handleGetRecap = asyncHandler(async (req: Request, res: Response) => {
   const storyIdParse = uuidSchema.safeParse(req.params.storyId);
-  if (!storyIdParse.success) {
-    res.status(400).json({ error: { code: 'INVALID_ID', message: 'Invalid story ID' } });
-    return;
-  }
+  if (!storyIdParse.success) throw invalidId('Invalid story ID');
 
   const queryParse = querySchema.safeParse(req.query);
-  if (!queryParse.success) {
-    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid query', details: queryParse.error.format() } });
-    return;
-  }
+  if (!queryParse.success) throw fromZod(queryParse.error, 'Invalid query');
 
   const { upToChapter, foreshadow } = queryParse.data;
   const includeForeshadow = foreshadow === '1' || foreshadow === 'true';
   const userId = (req.headers['x-user-id'] as string) || DEFAULT_USER_ID;
 
-  try {
-    const scope = await resolveSpoilerScope(storyIdParse.data, upToChapter, userId);
-    const recap = await buildRecap(scope, includeForeshadow);
-    res.json(recap);
-  } catch (error) {
-    console.error('Recap controller error:', error);
-    res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to build recap' } });
-  }
-};
+  const scope = await resolveSpoilerScope(storyIdParse.data, upToChapter, userId);
+  const recap = await buildRecap(scope, includeForeshadow);
+  res.json(recap);
+});

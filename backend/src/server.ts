@@ -6,15 +6,19 @@
 import 'dotenv/config';
 
 import { createApp } from './app';
-import { env } from './config/env';
+import { env, validateAtBoot } from './config/env';
 import { closePool } from './db/pool';
+import { logger } from './services/logger';
+
+// Fail fast on a broken config; warn loudly on a degraded/insecure one.
+validateAtBoot();
 
 // Initialize Express application
 const app = createApp();
 
 // Start the HTTP server
 const server = app.listen(env.port, () => {
-  console.log(`🚀 Server running at http://localhost:${env.port}`);
+  logger.info(`Server running at http://localhost:${env.port}`);
 });
 
 /**
@@ -22,12 +26,12 @@ const server = app.listen(env.port, () => {
  * @param signal - The termination signal received
  */
 const shutdown = async (signal: NodeJS.Signals | 'SIGUSR2') => {
-  console.log(`\nReceived ${signal}. Gracefully shutting down...`);
+  logger.info(`Received ${signal}. Gracefully shutting down...`);
   server.close(async () => {
     try {
       await closePool();
     } catch (error) {
-      console.error('Error closing database pool', error);
+      logger.error({ err: error }, 'Error closing database pool');
     } finally {
       process.exit(0);
     }
@@ -42,7 +46,6 @@ terminationSignals.forEach((signal) => {
 
 // Handle uncaught exceptions to prevent server crash
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught exception', error);
+  logger.error({ err: error }, 'Uncaught exception');
   void shutdown('SIGTERM');
 });
-

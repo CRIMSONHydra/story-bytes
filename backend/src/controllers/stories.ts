@@ -1,27 +1,13 @@
 import { Request, Response } from 'express';
 import { getAllStories, getStoryById } from '../services/db';
+import { asyncHandler, notFound } from '../middleware/errors';
 
-export const handleGetStories = async (_req: Request, res: Response) => {
-  try {
-    const stories = await getAllStories();
-    res.json(stories);
-  } catch (error) {
-    console.error('Error fetching stories:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
+export const handleGetStories = asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await getAllStories());
+});
 
-export const handleGetStory = async (req: Request, res: Response) => {
-  const id = req.params.id as string;
-  try {
-    const story = await getStoryById(id);
-    if (!story) {
-      res.status(404).json({ error: 'Story not found' });
-      return;
-    }
-    res.json(story);
-  } catch (error) {
-    console.error('Error fetching story:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
+export const handleGetStory = asyncHandler(async (req: Request, res: Response) => {
+  const story = await getStoryById(req.params.id as string);
+  if (!story) throw notFound('Story not found');
+  res.json(story);
+});

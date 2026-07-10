@@ -28,6 +28,12 @@ describe('GET /health', () => {
     });
   });
 
+  it('advertises the API contract version on every response', async () => {
+    vi.spyOn(db, 'checkDatabase').mockResolvedValueOnce();
+    const response = await request(createApp()).get('/health');
+    expect(response.headers['x-api-version']).toBeDefined();
+  });
+
   it('returns 503 when database is unreachable', async () => {
     // Mock failed database check
     vi.spyOn(db, 'checkDatabase').mockRejectedValueOnce(new Error('boom'));

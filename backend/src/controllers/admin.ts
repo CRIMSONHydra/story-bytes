@@ -7,28 +7,19 @@ import { resolve, basename } from 'path';
 import { getAdminStories, deleteStory, getSeriesTitleForStory, getStoryIdsBySeriesTitle, getDistinctSeries } from '../services/admin';
 import { getRagTrace } from '../services/db';
 import { getProjectRoot } from './assets';
+import { asyncHandler, badRequest, invalidId, notFound } from '../middleware/errors';
+import { logger } from '../services/logger';
 
 const uuidSchema = z.string().uuid();
 
 /** M9: inspect a RAG trace by id (debugging / eval). */
-export const handleGetTrace = async (req: Request, res: Response) => {
+export const handleGetTrace = asyncHandler(async (req: Request, res: Response) => {
   const parsed = uuidSchema.safeParse(req.params.traceId);
-  if (!parsed.success) {
-    res.status(400).json({ error: { code: 'INVALID_ID', message: 'Invalid trace ID' } });
-    return;
-  }
-  try {
-    const trace = await getRagTrace(parsed.data);
-    if (!trace) {
-      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Trace not found' } });
-      return;
-    }
-    res.json(trace);
-  } catch (error) {
-    console.error('Trace lookup error:', error);
-    res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to load trace' } });
-  }
-};
+  if (!parsed.success) throw invalidId('Invalid trace ID');
+  const trace = await getRagTrace(parsed.data);
+  if (!trace) throw notFound('Trace not found');
+  res.json(trace);
+});
 
 const PYTHON_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -51,52 +42,26 @@ function runPython(cwd: string, args: string[]): Promise<string> {
   });
 }
 
-export const handleGetSeries = async (_req: Request, res: Response) => {
-  try {
-    const series = await getDistinctSeries();
-    res.json(series);
-  } catch (error) {
-    console.error('Series list error:', error);
-    res.status(500).json({ error: 'Failed to fetch series' });
-  }
-};
+export const handleGetSeries = asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await getDistinctSeries());
+});
 
-export const handleAdminGetStories = async (_req: Request, res: Response) => {
-  try {
-    const stories = await getAdminStories();
-    res.json(stories);
-  } catch (error) {
-    console.error('Admin stories error:', error);
-    res.status(500).json({ error: 'Failed to fetch stories' });
-  }
-};
+export const handleAdminGetStories = asyncHandler(async (_req: Request, res: Response) => {
+  res.json(await getAdminStories());
+});
 
-export const handleAdminDeleteStory = async (req: Request, res: Response) => {
+export const handleAdminDeleteStory = asyncHandler(async (req: Request, res: Response) => {
   const parsed = uuidSchema.safeParse(req.params.storyId);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid story ID' });
-    return;
-  }
+  if (!parsed.success) throw invalidId('Invalid story ID');
 
-  try {
-    const deleted = await deleteStory(parsed.data);
-    if (deleted) {
-      res.status(204).send();
-    } else {
-      res.status(404).json({ error: 'Story not found' });
-    }
-  } catch (error) {
-    console.error('Admin delete error:', error);
-    res.status(500).json({ error: 'Failed to delete story' });
-  }
-};
+  const deleted = await deleteStory(parsed.data);
+  if (!deleted) throw notFound('Story not found');
+  res.status(204).send();
+});
 
-export const handleAdminIngest = async (req: Request, res: Response) => {
+export const handleAdminIngest = asyncHandler(async (req: Request, res: Response) => {
   const file = req.file;
-  if (!file) {
-    res.status(400).json({ error: 'No file uploaded. Accepted: .epub, .cbz, .cbr' });
-    return;
-  }
+  if (!file) throw badRequest('No file uploaded. Accepted: .epub, .cbz, .cbr');
 
   const projectRoot = getProjectRoot();
   const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
@@ -124,8 +89,7 @@ export const handleAdminIngest = async (req: Request, res: Response) => {
     } else if (ext === '.cbz' || ext === '.cbr') {
       extractScript = ['ingestion/comic/extract_comic.py', workFilePath, '-o', workDir, '-v', '--ocr'];
     } else {
-      res.status(400).json({ error: `Unsupported file type: ${ext}` });
-      return;
+      throw badRequest(`Unsupported file type: ${ext}`);
     }
 
     await runPython(projectRoot, extractScript);
@@ -160,10 +124,10 @@ export const handleAdminIngest = async (req: Request, res: Response) => {
           }
         }
       } catch (enrichError) {
-        console.warn('Image enrichment failed (non-fatal):', enrichError);
+        logger.warn({ err: enrichError }, 'Image enrichment failed (non-fatal)');
       }
     } else {
-      console.warn(`Could not parse story_id from load_to_db.py output. Skipping enrichment. Output: ${loadOutput.slice(-200)}`);
+      logger.warn(`Could not parse story_id from load_to_db.py output; skipping enrichment. Output: ${loadOutput.slice(-200)}`);
     }
 
     res.json({
@@ -171,11 +135,10 @@ export const handleAdminIngest = async (req: Request, res: Response) => {
       message: 'Ingestion complete',
       storyId: storyIdMatch?.[1] || null,
     });
-  } catch (error) {
-    console.error('Admin ingest error:', error);
-    res.status(500).json({ error: 'Ingestion failed', details: String(error) });
   } finally {
+    // Best-effort cleanup regardless of success/failure; the error (if any) propagates to the
+    // centralized error handler for a normalized 500 envelope.
     await unlink(file.path).catch(() => { /* best effort cleanup */ });
     await rm(workDir, { recursive: true, force: true }).catch(() => { /* best effort cleanup */ });
   }
-};
+});

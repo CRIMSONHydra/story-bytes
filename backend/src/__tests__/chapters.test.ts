@@ -91,6 +91,6 @@ describe('GET /api/chapters/:id', () => {
     const response = await request(createApp()).get(`/api/chapters/${TEST_UUID}`);
 
     expect(response.status).toBe(404);
-    expect(response.body).toMatchObject({ error: 'Chapter not found' });
+    expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND', message: 'Chapter not found' } });
   });
 });

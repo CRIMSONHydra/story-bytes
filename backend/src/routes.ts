@@ -14,6 +14,9 @@ import { handleGetAssetImage, handleGetStoryImage } from './controllers/assets';
 import { handleGetProgress, handleUpdateProgress } from './controllers/progress';
 import { handleAdminGetStories, handleAdminDeleteStory, handleAdminIngest, handleGetSeries, handleGetTrace } from './controllers/admin';
 import { upload } from './middleware/upload';
+import { adminAuth } from './middleware/adminAuth';
+import { chatLimiter, ingestLimiter } from './middleware/rateLimits';
+import { asyncHandler } from './middleware/errors';
 import { getSeriesChapters } from './services/db';
 
 const router = Router();
@@ -26,8 +29,8 @@ router.get('/stories/:storyId/chapters', handleGetChapters);
 // Chapters
 router.get('/chapters/:id', handleGetChapter);
 
-// Chat (RAG)
-router.post('/chat', handleChat);
+// Chat (RAG) — rate-limited (each call fans out to embedding + model inference)
+router.post('/chat', chatLimiter, handleChat);
 
 // Summarization (Phase 4)
 router.post('/stories/:storyId/summarize', handleSummarize);
@@ -46,15 +49,10 @@ router.get('/assets/:assetId/image', handleGetAssetImage);
 router.get('/stories/:storyId/image', handleGetStoryImage);
 
 // Series chapters (cross-volume spoiler selector)
-router.get('/stories/:storyId/series-chapters', async (req, res) => {
-  try {
-    const data = await getSeriesChapters(req.params.storyId as string);
-    res.json(data);
-  } catch (error) {
-    console.error('Series chapters error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+router.get('/stories/:storyId/series-chapters', asyncHandler(async (req, res) => {
+  const data = await getSeriesChapters(req.params.storyId as string);
+  res.json(data);
+}));
 
 // Reading Progress (Phase 5)
 router.get('/stories/:storyId/progress', handleGetProgress);
@@ -63,10 +61,10 @@ router.put('/stories/:storyId/progress', handleUpdateProgress);
 // Series
 router.get('/series', handleGetSeries);
 
-// Admin
-router.get('/admin/stories', handleAdminGetStories);
-router.delete('/admin/stories/:storyId', handleAdminDeleteStory);
-router.post('/admin/ingest', upload.single('file'), handleAdminIngest);
-router.get('/admin/traces/:traceId', handleGetTrace);
+// Admin — gated by ADMIN_TOKEN when configured (no-op in dev if unset)
+router.get('/admin/stories', adminAuth, handleAdminGetStories);
+router.delete('/admin/stories/:storyId', adminAuth, handleAdminDeleteStory);
+router.post('/admin/ingest', adminAuth, ingestLimiter, upload.single('file'), handleAdminIngest);
+router.get('/admin/traces/:traceId', adminAuth, handleGetTrace);
 
 export default router;

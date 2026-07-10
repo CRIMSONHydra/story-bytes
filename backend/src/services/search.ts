@@ -5,6 +5,7 @@
 
 import axios from 'axios';
 import { env } from '../config/env';
+import { logger } from './logger';
 
 /**
  * Represents a single search result from Google Custom Search.
@@ -29,7 +30,7 @@ interface SearchResult {
 export const searchWeb = async (query: string, numResults = 5): Promise<SearchResult[]> => {
   // Check if required API credentials are configured
   if (!env.googleSearchApiKey || !env.googleCx) {
-    console.warn('Google Search API key or CX not configured.');
+    logger.warn('Google Search API key or CX not configured.');
     return [];
   }
 
@@ -57,7 +58,7 @@ export const searchWeb = async (query: string, numResults = 5): Promise<SearchRe
       snippet: item.snippet,
     }));
   } catch (error) {
-    console.error('Web search failed:', error);
+    logger.error({ err: error }, 'Web search failed');
     // Return empty array on error to prevent breaking the calling code
     return [];
   }

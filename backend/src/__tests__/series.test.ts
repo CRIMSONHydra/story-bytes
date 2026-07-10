@@ -99,6 +99,6 @@ describe('GET /api/stories/:storyId/series-chapters', () => {
     const response = await request(createApp()).get(`/api/stories/${TEST_UUID}/series-chapters`);
 
     expect(response.status).toBe(500);
-    expect(response.body).toMatchObject({ error: 'Internal server error' });
+    expect(response.body).toMatchObject({ error: { code: 'INTERNAL' } });
   });
 });

@@ -414,7 +414,11 @@ file over 1000 lines; vanilla CSS only.
 
 ### Phase A — Foundation (critical-path root)
 
-**M1 — Repo baseline + error/log/security spine** · *Platform F1–F3* · prereq: none
+**M1 — Repo baseline + error/log/security spine** · *Platform F1–F3* · prereq: none · ✅ **DONE**
+(`middleware/errors.ts` envelope + `asyncHandler`; pino `services/logger.ts` + `httpLogger` request ids;
+`no-console` enforced; `X-API-Version`; `GET /config` removed; `middleware/adminAuth.ts`;
+`middleware/rateLimits.ts` chat 20/min · ingest 6/hr · api 300/min; `env.validateAtBoot()`. Tests:
+`middleware.test.ts` covers the envelope per class + 401 + 429. Backend 79 tests green.)
 Merge the current `feat/docker-compose-cicd` branch as the baseline everything diffs against. Add
 `middleware/errors.ts` (`ApiError`, `{error:{code,message,details?,requestId?}}` envelope, 404 + Zod + multer + bad-UUID
 mapping — fixes multer HTML errors and raw-stderr leaks), `services/logger.ts` (pino + `pino-http` with request IDs,
