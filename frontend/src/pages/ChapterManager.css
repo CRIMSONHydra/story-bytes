@@ -1,0 +1,105 @@
+.chapter-manager {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.cm-status {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--surface, #1e1e24);
+  border: 1px solid var(--border, #444);
+}
+
+.cm-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.cm-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  margin-bottom: 0.35rem;
+}
+
+.cm-row.cm-front {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.cm-order {
+  min-width: 2rem;
+  text-align: right;
+  color: var(--text-muted, #888);
+}
+
+.cm-title {
+  flex: 1;
+  font-weight: 500;
+}
+
+.cm-blocks {
+  color: var(--text-muted, #888);
+  font-size: 0.85rem;
+}
+
+.cm-actions {
+  display: inline-flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.cm-actions button,
+.cm-append-actions button {
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--border, #444);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.cm-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cm-del {
+  color: var(--error, #ff6b6b);
+}
+
+.cm-append {
+  border-top: 1px solid var(--border, #333);
+  padding-top: 1rem;
+}
+
+.cm-append input,
+.cm-append textarea {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border, #444);
+  border-radius: 6px;
+  background: var(--surface, #1e1e24);
+  color: inherit;
+  font: inherit;
+}
+
+.cm-append-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.cm-estimate {
+  color: var(--text-muted, #999);
+  font-size: 0.85rem;
+}

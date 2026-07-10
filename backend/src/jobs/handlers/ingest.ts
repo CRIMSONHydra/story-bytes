@@ -18,6 +18,8 @@ const extractScriptFor = (ext: string, filePath: string, workDir: string): strin
   if (ext === '.cbz' || ext === '.cbr') {
     return ['ingestion/comic/extract_comic.py', filePath, '-o', workDir, '-v', '--ocr'];
   }
+  if (ext === '.txt' || ext === '.md') return ['ingestion/extract_text.py', filePath, '-o', workDir, '-v'];
+  if (ext === '.pdf') return ['ingestion/extract_pdf.py', filePath, '-o', workDir, '-v'];
   return null;
 };
 

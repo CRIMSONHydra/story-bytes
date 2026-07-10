@@ -16,6 +16,10 @@ import { handleAdminGetStories, handleAdminDeleteStory, handleAdminIngest, handl
 import { handleListUsers, handleGetUser, handleCreateUser, handleUpdateUser, handleDeleteUser } from './controllers/users';
 import { handleGetJob, handleListJobs, handleCancelJob } from './controllers/jobs';
 import { handleGetUsage } from './controllers/usage';
+import {
+  handleListChaptersAdmin, handleUpdateChapter, handleDeleteChapter,
+  handleReorderChapters, handleAppendChapter, handleEstimateAppend,
+} from './controllers/chapterAdmin';
 import { upload } from './middleware/upload';
 import { adminAuth } from './middleware/adminAuth';
 import { chatLimiter, ingestLimiter } from './middleware/rateLimits';
@@ -31,6 +35,14 @@ router.get('/stories/:storyId/chapters', handleGetChapters);
 
 // Chapters
 router.get('/chapters/:id', handleGetChapter);
+
+// Chapter management (M13) — mutations gated (append incurs embedding cost); list/estimate open.
+router.get('/stories/:storyId/chapters/manage', handleListChaptersAdmin);
+router.post('/stories/:storyId/chapters/estimate', handleEstimateAppend);
+router.post('/stories/:storyId/chapters', adminAuth, handleAppendChapter);
+router.post('/stories/:storyId/chapters/reorder', adminAuth, handleReorderChapters);
+router.patch('/chapters/:chapterId', adminAuth, handleUpdateChapter);
+router.delete('/chapters/:chapterId', adminAuth, handleDeleteChapter);
 
 // Chat (RAG) — rate-limited (each call fans out to embedding + model inference)
 router.post('/chat', chatLimiter, handleChat);

@@ -38,7 +38,7 @@ export const handleAdminDeleteStory = asyncHandler(async (req: Request, res: Res
   res.status(204).send();
 });
 
-const ALLOWED_EXT = ['.epub', '.cbz', '.cbr'];
+const ALLOWED_EXT = ['.epub', '.cbz', '.cbr', '.txt', '.md', '.pdf'];
 
 /**
  * M5: accept an upload, stage it durably, and ENQUEUE the ingest — returns 202 + jobId immediately
@@ -47,10 +47,10 @@ const ALLOWED_EXT = ['.epub', '.cbz', '.cbr'];
  */
 export const handleAdminIngest = asyncHandler(async (req: Request, res: Response) => {
   const file = req.file;
-  if (!file) throw badRequest('No file uploaded. Accepted: .epub, .cbz, .cbr');
+  if (!file) throw badRequest('No file uploaded. Accepted: .epub, .cbz, .cbr, .txt, .md, .pdf');
 
   const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
-  if (!ALLOWED_EXT.includes(ext)) throw badRequest(`Unsupported file type: ${ext}. Accepted: .epub, .cbz, .cbr`);
+  if (!ALLOWED_EXT.includes(ext)) throw badRequest(`Unsupported file type: ${ext}. Accepted: .epub, .cbz, .cbr, .txt, .md, .pdf`);
 
   const projectRoot = getProjectRoot();
   const fileName = basename(file.originalname);

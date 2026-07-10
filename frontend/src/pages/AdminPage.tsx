@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { API_BASE } from '../config';
 import { apiGet } from '../api/client';
@@ -275,6 +276,13 @@ export default function AdminPage() {
                           <span className="admin-vol-stat">{story.block_count} blocks</span>
                           <span className="admin-vol-stat">{story.embedding_count} emb</span>
                           <span className="admin-vol-stat">{story.asset_count} assets</span>
+                          <Link
+                            className="manage-link"
+                            to={`/story/${story.story_id}/manage`}
+                            onClick={ev => ev.stopPropagation()}
+                          >
+                            Chapters
+                          </Link>
                           <button
                             className="delete-btn"
                             onClick={ev => { ev.stopPropagation(); handleDelete(story.story_id, story.title); }}
