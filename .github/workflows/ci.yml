@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Least privilege: no job needs write access to the repo (Docker Hub auth uses secrets, and the
+# buildx gha cache uses its own runtime token — neither relies on the GITHUB_TOKEN).
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -67,7 +72,7 @@ jobs:
         working-directory: backend
         run: pnpm migrate:up
 
-      - name: Backend tests
+      - name: Unit tests (backend + frontend)
         run: pnpm test
 
       - name: Setup Python
@@ -78,14 +83,70 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Install Python dependencies
-        run: uv pip install --system -r ingestion/requirements-dev.txt
+      - name: Install Python dependencies (locked)
+        run: uv sync --locked --project ingestion
 
       - name: Python tests
-        run: python -m pytest ingestion/tests/ -v
+        run: uv run --project ingestion python -m pytest ingestion/tests/ -v
+
+  smoke:
+    # Proof the built image boots migrated, talks to the DB, and enforces the M1 spine.
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Write .env for docker-compose
+        run: |
+          cat > .env <<'EOF'
+          DB_PASSWORD=postgres
+          DB_NAME=postgres
+          DB_USER=postgres
+          GEMINI_API_KEY=ci-dummy-key
+          GOOGLE_SEARCH_API_KEY=ci-dummy
+          GOOGLE_CX=ci-dummy
+          ADMIN_TOKEN=smoke-secret
+          EOF
+
+      - name: Build + start the stack
+        run: docker compose up -d --build
+
+      - name: Wait for /health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost/health | grep -q '"db":"ok"'; then
+              echo "healthy"; exit 0
+            fi
+            sleep 3
+          done
+          echo "backend never became healthy"; docker compose logs --no-color | tail -100; exit 1
+
+      - name: Assert API contract
+        run: |
+          set -e
+          echo "health db:ok"
+          curl -fsS http://localhost/health | grep -q '"db":"ok"'
+          echo "X-API-Version header present"
+          curl -fsSI http://localhost/api/stories | grep -iq '^x-api-version:'
+          echo "GET /api/stories 200"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost/api/stories)" = "200"
+          echo "admin without token -> 401 (ADMIN_TOKEN set)"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost/api/admin/stories)" = "401"
+          echo "404 envelope shape"
+          curl -s http://localhost/api/nope | grep -q '"code":"NOT_FOUND"'
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --no-color | tail -200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
 
   docker:
-    needs: test
+    needs: [test, smoke]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:

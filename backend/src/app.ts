@@ -11,6 +11,7 @@ import { resolve } from 'path';
 import { checkDatabase } from './db/pool';
 import { errorHandler, notFoundHandler } from './middleware/errors';
 import { apiLimiter } from './middleware/rateLimits';
+import { identity } from './middleware/identity';
 import { httpLogger, logger } from './services/logger';
 import routes from './routes';
 
@@ -32,7 +33,7 @@ export const createApp = () => {
   app.use(cors());
   app.use(express.json());
 
-  app.use('/api', apiLimiter, routes);
+  app.use('/api', apiLimiter, identity, routes);
 
   // Root endpoint - service information
   app.get('/', (_req, res) => {

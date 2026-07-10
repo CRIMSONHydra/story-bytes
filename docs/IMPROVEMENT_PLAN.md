@@ -448,7 +448,11 @@ per-stage timeout). Create `ingestion/pyproject.toml` + committed `uv.lock` (pin
 `uv` + `uv sync --locked`; run scripts via `uv run --project ingestion`.
 *DONE+:* pytest asserts the RESULT/event shapes; `admin.ts` story_id regex deleted.
 
-**M4 — Users/profiles + frontend API client + test framework** · *Platform F5, F10* · prereq: M2 · **(2.7, 2.9)**
+**M4 — Users/profiles + frontend API client + test framework** · *Platform F5, F10* · prereq: M2 · **(2.7, 2.9)** · ✅ **DONE**
+(migration `..._users`: users table, seeded default, orphan adoption before FKs; `services/users.ts` +
+`controllers/users.ts` CRUD; `middleware/identity.ts` x-user-id → `req.userId`; frontend `api/client.ts`
+[envelope + x-user-id + AbortSignal] + `api/user.ts` store + `ProfilePicker`; Vitest + RTL + jsdom,
+root `pnpm test` = `pnpm -r`; 5 seed FE suites. Backend 97 / FE 21 at landing.)
 `users` table + FK on `reading_progress`/`annotations` (seed `DEFAULT_USER_ID`, adopt orphan UUIDs first),
 `controllers/users.ts` CRUD, `middleware/identity.ts` (validate `x-user-id`: absent→default, malformed→400,
 unknown→404). Frontend `ProfilePicker.tsx` + `user.ts` (localStorage, auto-select seeded profile). Build the shared
@@ -457,7 +461,12 @@ Add Vitest + React Testing Library (`jsdom`); root `test` runs `pnpm -r`.
 *DONE+:* profile CRUD + identity edge cases; api-client envelope/header tests; the 5 seed frontend suites; CLAUDE.md
 drops the "when a framework is added" caveat.
 
-**M5 — Background jobs (pg-boss) + async ingest + job API** · *Platform F7–F8* · prereq: M2, M3, M4 · **(2.4, 2.11)**
+**M5 — Background jobs (pg-boss) + async ingest + job API** · *Platform F7–F8* · prereq: M2, M3, M4 · **(2.4, 2.11)** · ✅ **DONE**
+(migration `..._jobs`: `ingest_jobs` + `job_events`; `jobs/{queue,types,progress,handlers/*}`; pg-boss
+serial workers [localConcurrency 1], graceful drain; `POST /api/admin/ingest` → **202 {jobId}** with
+sha256 dedup, inline pipeline deleted; `GET /api/jobs/:jobId` + `/api/admin/jobs` + cancel; enrichment
+runs as a follow-on job; nginx timeout 600s→120s; AdminPage submit→poll→checklist. Verified pg-boss
+starts against live Postgres.)
 `backend/src/jobs/{queue,types,progress,pythonRunner}.ts` + `handlers/{ingest,enrichStory}.ts`; `job_events` table.
 `POST /api/admin/ingest` → **202 {jobId}** (stage upload to durable dir, dedup by `source_sha256`, enqueue); the old
 inline 3-step pipeline + regex deleted. `GET /api/jobs/:jobId` (polling), cancel, `GET /api/admin/jobs`. Concurrency 1
@@ -466,7 +475,12 @@ timeout to 120s. Frontend AdminPage: submit→poll→stage checklist, jobId pers
 *DONE+:* mocked-boss unit tests + one real-Postgres handler happy-path; enrichment now actually runs on upload.
 → **Human checkpoint #2.**
 
-**M6 — Cost tracking + CI smoke + docs** · *Platform F9, F11, F12* · prereq: M4, M5 · **(2.6)**
+**M6 — Cost tracking + CI smoke + docs** · *Platform F9, F11, F12* · prereq: M4, M5 · **(2.6)** · ✅ **DONE**
+(migration `..._llm_usage`; `services/pricing.ts` [read-time $] + `services/usage.ts` [fire-and-forget];
+`llm.ts` records usageMetadata with a context label; `load_to_db.py` records ingest-embedding usage;
+`GET /api/admin/usage` + admin usage table; CI Python on `uv sync --locked`, unit step runs
+backend+frontend, new **smoke** job [compose up → assert /health db:ok, X-API-Version, stories 200,
+admin 401, 404 envelope] gating the docker push. Verified live: chat call priced correctly.)
 `llm_usage` table + `services/usage.ts` (fire-and-forget) + `services/pricing.ts` (tokens→$ at read time);
 `llm.ts` gains `usageContext`; Python scripts insert too. `GET /api/admin/usage` + admin usage table.
 CI: pnpm caching, `uv sync --locked` + pytest, frontend tests, **`smoke` job** (`docker compose up`, assert `/health`

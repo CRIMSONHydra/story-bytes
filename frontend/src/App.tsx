@@ -6,6 +6,7 @@ import Reader from './pages/Reader';
 import ChatPage from './pages/ChatPage';
 import AdminPage from './pages/AdminPage';
 import RecapPage from './pages/RecapPage';
+import { ProfilePicker } from './components/ProfilePicker';
 
 // Lazy-loaded so the heavy vis-network dependency is only fetched when a reader
 // actually opens the knowledge graph.
@@ -21,6 +22,8 @@ function App() {
             <Link to="/">Home</Link>
             <Link to="/chat">Chat</Link>
             <Link to="/admin">Admin</Link>
+            {/* Switching profiles reloads so all scoped views (progress, chat) refetch as the new user. */}
+            <ProfilePicker onChange={() => window.location.reload()} />
           </nav>
         </header>
         <main>

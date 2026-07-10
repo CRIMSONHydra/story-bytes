@@ -14,7 +14,7 @@ story-bytes/
 │   │   ├── services/      # Business logic (rag, llm, db, search)
 │   │   ├── db/            # PostgreSQL connection pool
 │   │   ├── config/        # Environment validation (Zod) — loads .env from project root
-│   │   ├── __tests__/     # Vitest test suites (9 tests)
+│   │   ├── __tests__/     # Vitest test suites (109 tests)
 │   │   ├── app.ts         # Express app factory
 │   │   ├── routes.ts      # API route definitions
 │   │   └── server.ts      # Entry point with graceful shutdown
@@ -47,14 +47,14 @@ story-bytes/
 ## Tech Stack
 
 - **Package manager:** pnpm 10+ (monorepo workspaces)
-- **Backend:** Express 5, TypeScript 5.9, Node.js 20+, Zod validation, pino logging, express-rate-limit
+- **Backend:** Express 5, TypeScript 5.9, Node.js 20+, Zod validation, pino logging, express-rate-limit, pg-boss (async jobs)
 - **Frontend:** React 19, TypeScript 5.9, Vite (rolldown-vite 7.2), React Router 7
 - **Database:** PostgreSQL 18+ on port 5433, with pgvector 0.8+ (HNSW cosine similarity)
 - **LLM:** Google Gemini via @google/genai SDK — `gemini-flash-lite-latest` (demo-stage default for both
   tiers; override `GEMINI_MAIN_MODEL=gemini-flash-latest` post-demo). Model IDs centralized in
   `backend/src/config/models.ts` + `ingestion/models.py`.
 - **Embeddings:** Gemini `gemini-embedding-2` (1536-dim MRL, in-prompt task instruction, auto-normalized)
-- **Testing:** Vitest 4 + Supertest (backend, 79 tests)
+- **Testing:** Vitest 4 + Supertest (backend, 109 tests) · Vitest + React Testing Library + jsdom (frontend, 25 tests)
 - **Linting:** ESLint 9 flat config + typescript-eslint + eslint-config-prettier (backend), react-hooks + react-refresh plugins (frontend)
 - **Styling:** Vanilla CSS only — **NO Tailwind CSS**
 - **Ingestion:** Python 3.12+ (psycopg2, google-genai, ebooklib, BeautifulSoup4, rarfile, pytesseract, Pillow)
@@ -80,7 +80,7 @@ pnpm build                 # Build backend + frontend
 pnpm lint                  # Lint backend + frontend
 
 # Test
-pnpm test                  # Run backend Vitest suite (8 tests)
+pnpm test                  # Run backend + frontend suites (pnpm -r): backend 109, frontend 25
 
 # Individual workspace commands
 pnpm --filter backend <script>
@@ -104,6 +104,9 @@ uv run --project ingestion python ingestion/enrich_images.py --all
 - Core content tables: `stories`, `chapters`, `chapter_blocks`, `chapter_sources`, `assets`, `chapter_embeddings`,
   `block_embeddings`, `asset_embeddings`, `annotations`, `external_knowledge`, `knowledge_embeddings`,
   `chapter_summaries`, `reading_progress`
+- Platform tables (M4–M6): `users` (profiles; FK on `reading_progress`/`annotations`), `ingest_jobs` +
+  `job_events` (async ingestion; pg-boss owns its own `pgboss.*` schema), `llm_usage` (token accounting).
+  Latest migrations: `..._users`, `..._jobs`, `..._llm_usage`.
 - Knowledge-graph + foreshadowing tables (Improvement Plan M14): `kg_entities`, `kg_entity_aliases`,
   `kg_entity_states`, `kg_relationships`, `kg_events`, `kg_event_participants`, `kg_plot_threads`,
   `kg_thread_beats`, `kg_foreshadow_links`, `kg_evidence`, `kg_entity_links`, `kg_extraction_runs`.
@@ -132,6 +135,13 @@ uv run --project ingestion python ingestion/enrich_images.py --all
 | GET | `/api/stories/:storyId/progress` | Get reading progress |
 | PUT | `/api/stories/:storyId/progress` | Update reading progress |
 | GET | `/api/stories/:storyId/series-chapters` | Cross-volume chapter list for spoiler selector |
+| GET/POST | `/api/users`, `/api/users/:id` | Profiles CRUD (M4); `x-user-id` header selects the active profile |
+| POST | `/api/admin/ingest` | Async ingest (M5) → **202 {jobId}**; poll below |
+| GET | `/api/jobs/:jobId` | Ingest job status + event stream (M5) |
+| GET | `/api/admin/jobs` | Recent ingest jobs (admin) · `POST /api/admin/jobs/:jobId/cancel` |
+| GET | `/api/admin/usage` | LLM token usage + read-time cost (M6, admin) |
+
+Admin routes (`/api/admin/*`) require `Authorization: Bearer $ADMIN_TOKEN` when `ADMIN_TOKEN` is set.
 
 ## Environment Variables
 
@@ -166,6 +176,20 @@ overrides: `GEMINI_MAIN_MODEL` / `GEMINI_LITE_MODEL` / `GEMINI_EMBEDDING_MODEL` 
 - `validateAtBoot()` (in `server.ts`) fails fast on an unresolvable DB URL and warns on missing
   `GEMINI_API_KEY` / `ADMIN_TOKEN`.
 
+### Identity, jobs & usage (M4–M6)
+
+- **Identity (M4):** `middleware/identity.ts` resolves the `x-user-id` header (absent → seeded
+  default, malformed → 400, unknown → 404) onto `req.userId`; user-scoped controllers read that.
+  Frontend sends it via the shared `frontend/src/api/client.ts` (also parses the error envelope +
+  forwards `AbortSignal`); the active profile lives in `api/user.ts` (localStorage) via `ProfilePicker`.
+- **Async ingestion (M5):** ingestion runs on **pg-boss** (`backend/src/jobs/`), never inline. Upload
+  → 202 + `jobId`; poll `GET /api/jobs/:jobId`. Workers are serial (localConcurrency 1) since
+  ingest/enrich mutate the same story. Python scripts speak the M3 JSONL stdout contract to the
+  `pythonRunner`. The queue starts at boot and drains on shutdown.
+- **Cost (M6):** every Gemini call records raw token counts via `services/usage.ts`
+  (fire-and-forget); dollars are computed at read time from `services/pricing.ts`. Never block a
+  request on usage writes. `GET /api/admin/usage` reports it.
+
 ---
 
 ## Development Rules
@@ -192,10 +216,11 @@ After implementing any feature or bug fix, write and run comprehensive tests:
    - All edge cases (empty inputs, missing data, boundary values, malformed input)
    - Error scenarios (network failures, invalid state, missing dependencies)
    - Integration points (API request/response contracts, database interactions)
-2. **Run tests:** `pnpm test`
+2. **Run tests:** `pnpm test` (runs `pnpm -r test` — backend + frontend).
 3. **All tests must pass** before the work is considered complete.
-4. **Test location:** Backend tests go in `backend/src/__tests__/` using Vitest + Supertest.
-5. Frontend tests: when a frontend testing framework is added, follow the same comprehensive coverage standard.
+4. **Test location:** Backend tests go in `backend/src/__tests__/` (Vitest + Supertest). Frontend tests
+   live beside the code as `*.test.ts(x)` (Vitest + React Testing Library + jsdom; setup in
+   `frontend/src/test/setup.ts`). Both hold to the same comprehensive-coverage standard.
 
 ### Linting — Zero Warnings Policy
 

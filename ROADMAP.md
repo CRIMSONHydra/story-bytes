@@ -373,6 +373,12 @@ one external-knowledge subsystem, one usage table). The full underlying pillar d
 [`docs/improvement-plan/pillar-designs-and-maps.md`](docs/improvement-plan/pillar-designs-and-maps.md). Start with the
 "walking skeleton" (M1–M10b) which delivers the catch-up experience without the four heavy feature pillars.
 
+**Status (2026-07):** the **Platform foundation (M1–M6)** is complete — error/log/security spine, node-pg-migrate,
+Python runtime contract + `uv` packaging, users/profiles + identity + frontend API client + FE test framework,
+async ingestion via pg-boss, and LLM cost tracking + CI smoke. The RAG walking skeleton (M7–M9, M14/M15, Recap)
+and the embedding-2 migration are also done. Remaining: the four heavy feature pillars — Theories (M18/M19),
+Image generation (M16/M17), and any deferred async-ingest polish (M11–M13).
+
 ## Phase Dependencies
 
 ```

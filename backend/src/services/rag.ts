@@ -360,7 +360,7 @@ Respond as STRICT JSON (no markdown fences):
 
     const model = getModel();
     const temperature = effectiveMode === 'theory' ? undefined : 0;
-    const result = await model.generateContent(prompt, { temperature });
+    const result = await model.generateContent(prompt, { temperature, usageContext: `chat:${effectiveMode}`, storyId });
     const rawOutput = result.response.text();
 
     // Parse structured output; degrade gracefully to plain text if the model didn't return JSON.
@@ -468,7 +468,8 @@ export const summarizeStory = async (
   if (allText.length <= MAX_CHUNK_CHARS) {
     const result = await model.generateContent(
       `Summarize this volume in 3-5 sentences. Cover only the main plot arc, central conflict, and outcome. ` +
-      `No chapter-by-chapter breakdown. Do NOT include events beyond Chapter ${upToChapter}.\n\n${allText}`
+      `No chapter-by-chapter breakdown. Do NOT include events beyond Chapter ${upToChapter}.\n\n${allText}`,
+      { usageContext: 'summary', storyId },
     );
     summary = result.response.text();
   } else {
@@ -480,7 +481,8 @@ export const summarizeStory = async (
       const entry = `## Chapter ${ch.chapter_order}: ${ch.title}\n${ch.aggregated_text || ''}\n\n`;
       if (chunk.length + entry.length > MAX_CHUNK_CHARS && chunk.length > 0) {
         const res = await model.generateContent(
-          `Summarize these chapters in 2-3 sentences covering only the main events:\n\n${chunk}`
+          `Summarize these chapters in 2-3 sentences covering only the main events:\n\n${chunk}`,
+          { usageContext: 'summary', storyId },
         );
         chunkSummaries.push(res.response.text());
         chunk = '';
@@ -489,7 +491,8 @@ export const summarizeStory = async (
     }
     if (chunk) {
       const res = await model.generateContent(
-        `Summarize these chapters in 2-3 sentences covering only the main events:\n\n${chunk}`
+        `Summarize these chapters in 2-3 sentences covering only the main events:\n\n${chunk}`,
+        { usageContext: 'summary', storyId },
       );
       chunkSummaries.push(res.response.text());
     }
@@ -498,7 +501,8 @@ export const summarizeStory = async (
     const combined = chunkSummaries.map((s, i) => `Part ${i + 1}:\n${s}`).join('\n\n');
     const finalResult = await model.generateContent(
       `Combine into a single 3-5 sentence summary of this volume's main plot. ` +
-      `No bullet points, no chapter references, just a flowing narrative:\n\n${combined}`
+      `No bullet points, no chapter references, just a flowing narrative:\n\n${combined}`,
+      { usageContext: 'summary', storyId },
     );
     summary = finalResult.response.text();
   }

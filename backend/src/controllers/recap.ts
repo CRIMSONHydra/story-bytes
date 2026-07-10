@@ -29,7 +29,7 @@ export const handleGetRecap = asyncHandler(async (req: Request, res: Response) =
 
   const { upToChapter, foreshadow } = queryParse.data;
   const includeForeshadow = foreshadow === '1' || foreshadow === 'true';
-  const userId = (req.headers['x-user-id'] as string) || DEFAULT_USER_ID;
+  const userId = req.userId ?? DEFAULT_USER_ID;
 
   const scope = await resolveSpoilerScope(storyIdParse.data, upToChapter, userId);
   const recap = await buildRecap(scope, includeForeshadow);

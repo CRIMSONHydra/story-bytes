@@ -13,6 +13,9 @@ import { handleGetStoryGraph, handleSearchEntities, handleGetEntity, handleGetTh
 import { handleGetAssetImage, handleGetStoryImage } from './controllers/assets';
 import { handleGetProgress, handleUpdateProgress } from './controllers/progress';
 import { handleAdminGetStories, handleAdminDeleteStory, handleAdminIngest, handleGetSeries, handleGetTrace } from './controllers/admin';
+import { handleListUsers, handleGetUser, handleCreateUser, handleUpdateUser, handleDeleteUser } from './controllers/users';
+import { handleGetJob, handleListJobs, handleCancelJob } from './controllers/jobs';
+import { handleGetUsage } from './controllers/usage';
 import { upload } from './middleware/upload';
 import { adminAuth } from './middleware/adminAuth';
 import { chatLimiter, ingestLimiter } from './middleware/rateLimits';
@@ -58,13 +61,27 @@ router.get('/stories/:storyId/series-chapters', asyncHandler(async (req, res) =>
 router.get('/stories/:storyId/progress', handleGetProgress);
 router.put('/stories/:storyId/progress', handleUpdateProgress);
 
+// Users / profiles (M4)
+router.get('/users', handleListUsers);
+router.post('/users', handleCreateUser);
+router.get('/users/:id', handleGetUser);
+router.put('/users/:id', handleUpdateUser);
+router.delete('/users/:id', handleDeleteUser);
+
 // Series
 router.get('/series', handleGetSeries);
+
+// Jobs (M5) — async ingestion status. Reading a job by id is open (the admin UI polls it); the
+// admin job list + cancel are gated.
+router.get('/jobs/:jobId', handleGetJob);
+router.get('/admin/jobs', adminAuth, handleListJobs);
+router.post('/admin/jobs/:jobId/cancel', adminAuth, handleCancelJob);
 
 // Admin — gated by ADMIN_TOKEN when configured (no-op in dev if unset)
 router.get('/admin/stories', adminAuth, handleAdminGetStories);
 router.delete('/admin/stories/:storyId', adminAuth, handleAdminDeleteStory);
 router.post('/admin/ingest', adminAuth, ingestLimiter, upload.single('file'), handleAdminIngest);
 router.get('/admin/traces/:traceId', adminAuth, handleGetTrace);
+router.get('/admin/usage', adminAuth, handleGetUsage);
 
 export default router;
