@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { unlink, copyFile, mkdir, rm } from 'fs/promises';
 import { resolve, basename } from 'path';
@@ -9,6 +8,7 @@ import { getRagTrace } from '../services/db';
 import { getProjectRoot } from './assets';
 import { asyncHandler, badRequest, invalidId, notFound } from '../middleware/errors';
 import { logger } from '../services/logger';
+import { runPythonJson } from '../services/pythonRunner';
 
 const uuidSchema = z.string().uuid();
 
@@ -20,27 +20,6 @@ export const handleGetTrace = asyncHandler(async (req: Request, res: Response) =
   if (!trace) throw notFound('Trace not found');
   res.json(trace);
 });
-
-const PYTHON_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
-
-function runPython(cwd: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn('uv', ['run', 'python', ...args], {
-      cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: PYTHON_TIMEOUT_MS,
-    });
-    let stdout = '';
-    let stderr = '';
-    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-    proc.on('close', code => {
-      if (code === 0) resolve(stdout);
-      else reject(new Error(`Process exited ${code}: ${stderr.slice(-500)}`));
-    });
-    proc.on('error', reject);
-  });
-}
 
 export const handleGetSeries = asyncHandler(async (_req: Request, res: Response) => {
   res.json(await getDistinctSeries());
@@ -92,34 +71,32 @@ export const handleAdminIngest = asyncHandler(async (req: Request, res: Response
       throw badRequest(`Unsupported file type: ${ext}`);
     }
 
-    await runPython(projectRoot, extractScript);
+    await runPythonJson(projectRoot, extractScript);
 
     // Find the output JSON in the work dir
     const jsonStem = fileName.replace(/\.[^.]+$/, '');
     const outputJson = resolve(workDir, `${jsonStem}.json`);
 
-    // Step 2: Load + tag images
+    // Step 2: Load + tag images. story_id comes from the loader's terminal `result` JSONL event
+    // (M3 stdout contract) — no more regex-scraping the log text.
     const seriesTitle = req.body?.seriesTitle as string | undefined;
     const loadArgs = ['ingestion/load_to_db.py', outputJson, '--tag-images'];
     if (seriesTitle) loadArgs.push('--series-title', seriesTitle);
-    const loadOutput = await runPython(projectRoot, loadArgs);
-
-    // Extract story_id from load output
-    const storyIdMatch = loadOutput.match(/Story\s+([0-9a-f-]{36})/i)
-      || loadOutput.match(/story_id.*?([0-9a-f-]{36})/i);
+    const load = await runPythonJson(projectRoot, loadArgs);
+    const storyId = typeof load.result?.story_id === 'string' ? load.result.story_id : null;
 
     // Step 3: Enrich images with story context
-    if (storyIdMatch) {
+    if (storyId) {
       try {
-        await runPython(projectRoot, ['ingestion/enrich_images.py', '--story-id', storyIdMatch[1]]);
+        await runPythonJson(projectRoot, ['ingestion/enrich_images.py', '--story-id', storyId]);
 
         // Re-enrich entire series if this is part of one
-        const storySeriesTitle = await getSeriesTitleForStory(storyIdMatch[1]);
+        const storySeriesTitle = await getSeriesTitleForStory(storyId);
         if (storySeriesTitle) {
           const seriesIds = await getStoryIdsBySeriesTitle(storySeriesTitle);
           for (const sid of seriesIds) {
-            if (sid !== storyIdMatch[1]) {
-              await runPython(projectRoot, ['ingestion/enrich_images.py', '--story-id', sid]);
+            if (sid !== storyId) {
+              await runPythonJson(projectRoot, ['ingestion/enrich_images.py', '--story-id', sid]);
             }
           }
         }
@@ -127,13 +104,13 @@ export const handleAdminIngest = asyncHandler(async (req: Request, res: Response
         logger.warn({ err: enrichError }, 'Image enrichment failed (non-fatal)');
       }
     } else {
-      logger.warn(`Could not parse story_id from load_to_db.py output; skipping enrichment. Output: ${loadOutput.slice(-200)}`);
+      logger.warn('load_to_db.py emitted no result event with a story_id; skipping enrichment');
     }
 
     res.json({
       success: true,
       message: 'Ingestion complete',
-      storyId: storyIdMatch?.[1] || null,
+      storyId,
     });
   } finally {
     // Best-effort cleanup regardless of success/failure; the error (if any) propagates to the

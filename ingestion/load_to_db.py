@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import sys
 import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -16,8 +17,20 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+# Configure logging — human-readable logs go to STDERR so STDOUT is a clean JSONL event stream
+# (progress/usage/result) for programmatic consumers like the backend pythonRunner (plan M3, F6).
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", stream=sys.stderr)
+
+
+def emit_event(event: str, **fields: Any) -> None:
+    """Emit one structured JSONL event on STDOUT (the machine-readable channel).
+
+    The M3 stdout contract, built once here so M11's async ingestion extends it rather than
+    reinventing it: `progress` (stage updates), `usage` (token/cost accounting), and a single
+    terminal `result` event carrying the ingest outcome (story_id + counts). All human logging stays
+    on STDERR; STDOUT is JSONL only.
+    """
+    print(json.dumps({"event": event, **fields}), flush=True)
 
 # Embedding model configuration
 EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
@@ -511,6 +524,8 @@ def main():
                 logging.info(f"Chapters: {len(chapters)}, Blocks: {total_blocks}")
                 logging.info(f"Image tagging: {'enabled' if args.tag_images else 'disabled'}")
                 logging.info("=" * 60)
+                emit_event("progress", stage="loading", title=data.get("title", "Unknown"),
+                           content_type=content_type, chapters=len(chapters), blocks=total_blocks)
 
                 # Derive epub_path: same basename as JSON but with .epub extension
                 epub_path = ""
@@ -527,6 +542,9 @@ def main():
                 story_id = insert_story(cursor, data, content_type, epub_path=epub_path, series_title_override=args.series_title)
                 insert_chapters(cursor, story_id, chapters, client, tag_images=args.tag_images)
         logging.info("Successfully loaded story into database.")
+        # Terminal result event on STDOUT — the backend reads story_id from this, not from log text.
+        emit_event("result", status="ok", story_id=str(story_id), title=data.get("title", "Unknown"),
+                   content_type=content_type, chapters=len(chapters), blocks=total_blocks)
     finally:
         conn.close()
 

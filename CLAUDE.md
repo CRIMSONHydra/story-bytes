@@ -86,11 +86,12 @@ pnpm test                  # Run backend Vitest suite (8 tests)
 pnpm --filter backend <script>
 pnpm --filter frontend <script>
 
-# Python ingestion
-uv run python ingestion/epub/extract_epub.py dataset/<folder> -o processed -v
-uv run python ingestion/comic/extract_comic.py <archive> -o processed -v --ocr
-uv run python ingestion/load_to_db.py processed/<file>.json [--tag-images]
-uv run python ingestion/enrich_images.py --all
+# Python ingestion — run under the locked project env (M3). ingestion/pyproject.toml + uv.lock are
+# the source of truth; `uv sync --locked` (Docker) installs it. requirements*.txt are legacy shims.
+uv run --project ingestion python ingestion/epub/extract_epub.py dataset/<folder> -o processed -v
+uv run --project ingestion python ingestion/comic/extract_comic.py <archive> -o processed -v --ocr
+uv run --project ingestion python ingestion/load_to_db.py processed/<file>.json [--tag-images]
+uv run --project ingestion python ingestion/enrich_images.py --all
 ```
 
 ## Database

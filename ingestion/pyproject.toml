@@ -1,0 +1,30 @@
+[project]
+name = "story-bytes-ingestion"
+version = "1.0.0"
+description = "Story Bytes ingestion pipelines (EPUB/comic extraction, DB load, embeddings, knowledge graph)."
+requires-python = ">=3.12"
+dependencies = [
+    "psycopg2-binary",
+    "google-genai",
+    "python-dotenv",
+    "pgvector",
+    "ebooklib",
+    "beautifulsoup4",
+    "lxml",
+    "rarfile",
+    "pytesseract",
+    "Pillow",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pyyaml",
+]
+
+[tool.uv]
+# Pinned + committed uv.lock is the source of truth; `uv sync --locked` in Docker (M3, F6).
+
+[tool.setuptools]
+# Scripts are run directly (uv run --project ingestion python <script>), not installed as a package.
+py-modules = []
