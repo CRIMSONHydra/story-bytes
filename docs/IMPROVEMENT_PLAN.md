@@ -513,7 +513,16 @@ seed stories with the `text:` document instruction (migrated to `gemini-embeddin
 *DONE+:* citation-validation tests; eval no-regression; seed dump regenerated. → **Human checkpoint #4** (approve
 re-embedding + regenerating `db/seed.dump`).
 
-**M10 — Retrieval quality ladder** · *RAG D7–D9* · prereq: M9
+**M10 — Retrieval quality ladder** · *RAG D7–D9* · prereq: M9 · ✅ **DONE (core)**
+(`rewrite.ts`: one Flash-Lite call → standalone query + sub-queries + entity mentions + intent, replacing
+the substring `detectSummaryIntent`/`detectForeshadowingIntent` hacks, fail-open; `fusion.ts` RRF +
+configurable similarity floor, replacing the `*0.3` score fudge; `contextBuilder.ts` budgeted labeled
+assembly (citations index the budget-trimmed set, so a dropped block can't be cited); `history` in the
+chat contract → follow-up pronoun resolution. **Deferred** (additive, noted): `chapter_micro_summaries`
+retrieval tier, ±1 neighbor expansion, reranker flag — Recap already ships on `chapter_summaries`.
+120 backend tests; eval 0-leak held.)
+
+Original scope:
 `rewrite.ts` (one Flash-Lite call: standalone query + ≤3 sub-queries + entity mentions + intent — replaces the
 substring intent hacks); `fusion.ts` RRF (replaces `*0.3`) + similarity floor; `chapter_micro_summaries` populating the
 empty `chapter_embeddings` (the summary retrieval tier); `contextBuilder.ts` budgeted assembly + ±1 neighbor expansion;

@@ -4,7 +4,7 @@
  * including spoiler filtering, external knowledge integration, and response shape.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Hermetic: mock the DB pool so any db/graph function NOT explicitly spied below (e.g.
 // getImagesFromChapters, getForeshadowLinks) returns empty instead of attempting a real
@@ -34,6 +34,12 @@ const mockDefaults = () => {
 };
 
 describe('RAG answerQuery', () => {
+  beforeEach(() => {
+    // M10: answerQuery now calls generateJson (via rewriteQuery) for query understanding. Default it
+    // to null so rewriteQuery fail-opens to the raw query + 'recall' intent (matching the pre-M10
+    // behavior for these tests); individual tests override it where intent matters.
+    vi.spyOn(llm, 'generateJson').mockResolvedValue(null);
+  });
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -147,8 +153,12 @@ describe('RAG answerQuery', () => {
     expect(result.images[0].description).toBe('A sword training scene');
   });
 
-  it('uses foreshadowing mode when hints are detected', async () => {
+  it('uses foreshadowing mode when the rewrite classifies the intent', async () => {
     const fakeEmbedding = Array(768).fill(0.1);
+    // The query-understanding step classifies this as foreshadowing (replaces the old substring hack).
+    vi.mocked(llm.generateJson).mockResolvedValueOnce({
+      standaloneQuery: 'What does the letter hint at?', subQueries: [], entityMentions: [], intent: 'foreshadowing',
+    });
     vi.spyOn(llm, 'generateEmbedding').mockResolvedValueOnce(fakeEmbedding);
     vi.spyOn(db, 'findSimilarBlocks').mockResolvedValueOnce([
       {

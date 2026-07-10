@@ -62,7 +62,7 @@ describe('POST /api/chat', () => {
     expect(response.body.sources).toBeDefined();
     expect(response.body.images).toBeDefined();
     expect(answerQuery).toHaveBeenCalledWith(
-      'Who is the protagonist?', TEST_UUID, 3, undefined, DEFAULT_USER_ID
+      'Who is the protagonist?', TEST_UUID, 3, undefined, DEFAULT_USER_ID, undefined
     );
   });
 
@@ -105,7 +105,8 @@ describe('POST /api/chat', () => {
       TEST_UUID,
       undefined,
       'theory',
-      DEFAULT_USER_ID
+      DEFAULT_USER_ID,
+      undefined
     );
   });
 

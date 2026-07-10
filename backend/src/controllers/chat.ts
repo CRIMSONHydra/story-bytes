@@ -19,6 +19,12 @@ const chatRequestSchema = z.object({
   storyId: z.string().uuid().optional(),
   currentChapter: z.number().int().min(0).optional(),
   mode: z.enum(['recall', 'foreshadowing', 'theory']).optional(),
+  // Prior turns (M10) — used to rewrite follow-ups into a standalone query. Bounded to keep the
+  // rewrite prompt small; only role + content are accepted.
+  history: z
+    .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() }))
+    .max(20)
+    .optional(),
 });
 
 /**
@@ -29,11 +35,11 @@ export const handleChat = asyncHandler(async (req: Request, res: Response) => {
   const validation = chatRequestSchema.safeParse(req.body);
   if (!validation.success) throw fromZod(validation.error);
 
-  const { query, storyId, currentChapter, mode } = validation.data;
+  const { query, storyId, currentChapter, mode, history } = validation.data;
   const userId = req.userId ?? DEFAULT_USER_ID;
 
   try {
-    const result = await answerQuery(query, storyId, currentChapter, mode, userId);
+    const result = await answerQuery(query, storyId, currentChapter, mode, userId, history);
     res.json(result);
   } catch (error) {
     // Hard pipeline failure (embedding/model/DB) surfaces as 502 with a correlation id — not a

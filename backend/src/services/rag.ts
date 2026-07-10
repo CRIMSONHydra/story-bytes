@@ -6,6 +6,9 @@
 
 import { getModel, generateEmbedding } from './llm';
 import { logger } from './logger';
+import { rewriteQuery, type ChatTurn, type QueryIntent } from './rewrite';
+import { reciprocalRankFusion, applyFloor } from './fusion';
+import { buildStoryContext } from './contextBuilder';
 import { MAIN_MODEL } from '../config/models';
 import {
   findSimilarBlocks,
@@ -102,22 +105,6 @@ const requiresExternalKnowledge = (query: string, mode: ChatMode): boolean => {
 };
 
 /**
- * Detect summary intent from query keywords.
- */
-const detectSummaryIntent = (query: string): boolean => {
-  const triggers = ['summarize', 'summary', 'summaries', 'recap', 'what happened so far', 'overview', 'brief summary'];
-  return triggers.some(t => query.toLowerCase().includes(t));
-};
-
-/**
- * Detect foreshadowing intent from query keywords.
- */
-const detectForeshadowingIntent = (query: string): boolean => {
-  const triggers = ['hint', 'foreshadow', 'what could', 'what does', 'mean', 'symbolize', 'symbol', 'ominous', 'predict', 'setup'];
-  return triggers.some(t => query.toLowerCase().includes(t));
-};
-
-/**
  * Build mode-specific system prompts.
  */
 const buildSystemPrompt = (mode: ChatMode, currentChapter: number | undefined): string => {
@@ -194,7 +181,8 @@ export const answerQuery = async (
   storyId?: string,
   currentChapter?: number,
   mode: ChatMode = 'recall',
-  userId: string = DEFAULT_USER_ID
+  userId: string = DEFAULT_USER_ID,
+  history: ChatTurn[] = []
 ): Promise<ChatResponse> => {
   const traceId = randomUUID();
   try {
@@ -205,8 +193,16 @@ export const answerQuery = async (
     const boundary = scope ? scope.maxChapterOrder : currentChapter;
     const priorVolumeIds = scope && scope.priorVolumeIds.length > 0 ? scope.priorVolumeIds : undefined;
 
+    // M10: one Flash-Lite call resolves follow-ups (history → standalone query), classifies intent,
+    // and extracts entity mentions — replacing the brittle substring intent hacks. An explicit
+    // non-recall UI mode always wins over the model's guess. Fail-open: on failure this is the raw
+    // query + 'recall' (spoiler safety is enforced downstream in SQL regardless).
+    const explicitIntent: QueryIntent | undefined = mode !== 'recall' ? mode : undefined;
+    const plan = await rewriteQuery(query, history, explicitIntent);
+    const searchQuery = plan.standaloneQuery;
+
     // Handle summary queries using the summarization pipeline
-    if (detectSummaryIntent(query) && storyId) {
+    if (plan.intent === 'summary' && storyId) {
       const seriesStories = await getStoriesInSeries(storyId);
       const currentIdx = seriesStories.findIndex(s => s.story_id === storyId);
 
@@ -230,23 +226,25 @@ export const answerQuery = async (
       };
     }
 
-    // Auto-detect foreshadowing mode from query if mode is recall
-    const effectiveMode = mode === 'recall' && detectForeshadowingIntent(query) ? 'foreshadowing' : mode;
+    // Intent from the rewrite (explicit mode already folded in); 'summary' handled above.
+    const effectiveMode: ChatMode = (plan.intent === 'summary' ? 'recall' : plan.intent);
 
-    // Step 1: Generate the query embedding (gemini-embedding-2 uses the in-prompt query instruction).
-    const embedding = await generateEmbedding(query, 'query');
+    // Step 1: Embed the standalone query (gemini-embedding-2 uses the in-prompt query instruction).
+    const embedding = await generateEmbedding(searchQuery, 'query');
 
     // Step 1.7: GraphRAG — link the query to known entities (spoiler-visible aliases only), expand
     // the keyword arm with those aliases ("Dead End" also retrieves "Ruijerd" passages), and build a
     // KNOWLEDGE GRAPH context block. No-op when the story has no graph. Non-fatal.
     let graphContext = '';
-    let keywordQuery = query;
+    // Keyword arm starts from the standalone query + the rewrite's entity mentions, then is widened
+    // with spoiler-visible graph aliases below.
+    let keywordQuery = [searchQuery, ...plan.entityMentions].join(' ');
     if (storyId) {
       try {
-        const linked = await linkEntities(query, storyId, boundary ?? 0);
+        const linked = await linkEntities(searchQuery, storyId, boundary ?? 0);
         if (linked.length > 0) {
           const aliasTerms = [...new Set(linked.flatMap((e) => [e.name, ...e.aliases]))];
-          keywordQuery = `${query} ${aliasTerms.join(' ')}`;
+          keywordQuery = `${keywordQuery} ${aliasTerms.join(' ')}`;
           const ego = await getEgoNetwork(linked.map((e) => e.entityId), storyId, boundary ?? 0);
           graphContext = formatGraphContext(linked, ego);
         }
@@ -261,20 +259,17 @@ export const answerQuery = async (
       findBlocksByKeyword(keywordQuery, storyId, boundary, 5, priorVolumeIds),
     ]);
 
-    // Merge and deduplicate, preferring semantic scores
-    const blockMap = new Map<string, typeof semanticBlocks[0]>();
-    for (const block of semanticBlocks) {
-      blockMap.set(block.block_id, block);
-    }
-    for (const block of keywordBlocks) {
-      if (!blockMap.has(block.block_id)) {
-        // Apply hybrid weighting: keyword results get a scaled similarity
-        blockMap.set(block.block_id, { ...block, similarity: block.similarity * 0.3 });
-      }
-    }
-    const mergedBlocks = [...blockMap.values()]
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, 8);
+    // M10: fuse the semantic + keyword arms by RANK (RRF) instead of the old `*0.3` score fudge —
+    // cosine and keyword scores aren't on the same scale, so rank fusion is more principled. A
+    // configurable similarity floor (default 0 = off) first drops near-noise semantic hits.
+    const simFloor = Number(process.env.RAG_SIM_FLOOR || 0);
+    const flooredSemantic = simFloor > 0 ? applyFloor(semanticBlocks, (b) => b.similarity, simFloor) : semanticBlocks;
+    const mergedBlocks = reciprocalRankFusion(
+      [flooredSemantic, keywordBlocks],
+      (b) => b.block_id,
+    )
+      .slice(0, 8)
+      .map((f) => f.item);
 
     // Step 3: Image retrieval — from asset embeddings + from matched chapters
     const matchedChapterOrders = [...new Set(mergedBlocks.map(b => b.chapter_order))];
@@ -299,13 +294,13 @@ export const answerQuery = async (
       }
     }
 
-    // Step 5: Format Context — label each block [S1]..[Sn] so the model can cite specific sources.
-    const storyContext = mergedBlocks
-      .map((block, i) => {
-        const volumePrefix = block.story_title ? `${block.story_title}, ` : '';
-        return `[S${i + 1}] [${volumePrefix}Chapter ${block.chapter_order}: ${block.title}]\n${block.text_content}`;
-      })
-      .join('\n\n');
+    // Step 5: Format Context (M10) — budgeted, labeled [S1]..[Sn] assembly. `contextBlocks` is what
+    // actually fit the budget (in label order); citations + sources are built from it, not from the
+    // full merged set, so a dropped block can't be cited.
+    const { context: storyContext, used: contextBlocks } = buildStoryContext(
+      mergedBlocks,
+      { maxChars: Number(process.env.RAG_CONTEXT_BUDGET || 8000) },
+    );
 
     const imageContext = relevantImages.length > 0
       ? '\n\nRELEVANT IMAGES:\n' + relevantImages.map(img => {
@@ -388,10 +383,12 @@ Respond as STRICT JSON (no markdown fences):
     // Build sources. Prefer cited-only (labels validated against the retrieved set — hallucinated
     // labels dropped). If the model returned no valid citations (or didn't produce JSON), fall back
     // to the retrieved blocks so we never return an answer with zero provenance.
+    // Citations index into the LABELED context ([S1]..[Sn]), which is `contextBlocks` (what fit the
+    // budget) — not the full merged set — so a dropped block can never be cited.
     const citedIdx = parsed.citations
       .map(label => parseInt(label.replace(/[^0-9]/g, ''), 10) - 1)
-      .filter(i => Number.isInteger(i) && i >= 0 && i < mergedBlocks.length);
-    const chosen = citedIdx.length > 0 ? [...new Set(citedIdx)].map(i => mergedBlocks[i]) : mergedBlocks;
+      .filter(i => Number.isInteger(i) && i >= 0 && i < contextBlocks.length);
+    const chosen = citedIdx.length > 0 ? [...new Set(citedIdx)].map(i => contextBlocks[i]) : contextBlocks;
     const sources: ChatSource[] = chosen.map(b => ({
       chapterOrder: b.chapter_order,
       blockId: b.block_id,
