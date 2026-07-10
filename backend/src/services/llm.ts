@@ -158,11 +158,15 @@ export const generateEmbedding = async (
     throw new Error('Failed to generate embedding: invalid response structure');
   }
 
+  // embedContent doesn't return usageMetadata, so bill from billableCharacterCount when present,
+  // else fall back to a ~chars/4 token estimate (matching the Python ingestion accounting) so the
+  // cost report isn't silently zero for the embedding path.
+  const input = buildEmbeddingInput(text, kind);
   const meta = (response as { metadata?: { billableCharacterCount?: number } }).metadata;
   recordUsage({
     context: kind === 'query' ? 'embedding-query' : 'embedding-document',
     model: EMBEDDING_MODEL_ID,
-    inputTokens: meta?.billableCharacterCount ?? 0,
+    inputTokens: meta?.billableCharacterCount ?? Math.ceil(input.length / 4),
     outputTokens: 0,
   });
 

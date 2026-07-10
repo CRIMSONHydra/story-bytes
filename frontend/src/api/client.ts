@@ -53,7 +53,20 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}):
   if (res.status === 204) return undefined as T;
 
   const text = await res.text();
-  const parsed = text ? (JSON.parse(text) as unknown) : undefined;
+  // Guard against non-JSON bodies (proxy 502 HTML, plain-text errors): surface them as ApiError
+  // instead of letting a SyntaxError escape the ApiError contract callers rely on.
+  let parsed: unknown = undefined;
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new ApiError(
+        res.status,
+        res.ok ? 'PARSE_ERROR' : 'HTTP_ERROR',
+        res.ok ? 'Invalid JSON in response body' : `Request failed with status ${res.status}`,
+      );
+    }
+  }
 
   if (!res.ok) {
     if (isErrorBody(parsed)) {

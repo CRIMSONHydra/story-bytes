@@ -14,7 +14,7 @@ story-bytes/
 │   │   ├── services/      # Business logic (rag, llm, db, search)
 │   │   ├── db/            # PostgreSQL connection pool
 │   │   ├── config/        # Environment validation (Zod) — loads .env from project root
-│   │   ├── __tests__/     # Vitest test suites (9 tests)
+│   │   ├── __tests__/     # Vitest test suites (109 tests)
 │   │   ├── app.ts         # Express app factory
 │   │   ├── routes.ts      # API route definitions
 │   │   └── server.ts      # Entry point with graceful shutdown
@@ -54,7 +54,7 @@ story-bytes/
   tiers; override `GEMINI_MAIN_MODEL=gemini-flash-latest` post-demo). Model IDs centralized in
   `backend/src/config/models.ts` + `ingestion/models.py`.
 - **Embeddings:** Gemini `gemini-embedding-2` (1536-dim MRL, in-prompt task instruction, auto-normalized)
-- **Testing:** Vitest 4 + Supertest (backend, 79 tests)
+- **Testing:** Vitest 4 + Supertest (backend, 109 tests) · Vitest + React Testing Library + jsdom (frontend, 25 tests)
 - **Linting:** ESLint 9 flat config + typescript-eslint + eslint-config-prettier (backend), react-hooks + react-refresh plugins (frontend)
 - **Styling:** Vanilla CSS only — **NO Tailwind CSS**
 - **Ingestion:** Python 3.12+ (psycopg2, google-genai, ebooklib, BeautifulSoup4, rarfile, pytesseract, Pillow)

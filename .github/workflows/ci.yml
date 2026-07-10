@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Least privilege: no job needs write access to the repo (Docker Hub auth uses secrets, and the
+# buildx gha cache uses its own runtime token — neither relies on the GITHUB_TOKEN).
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

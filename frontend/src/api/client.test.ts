@@ -63,6 +63,23 @@ describe('apiRequest', () => {
     expect(err.code).toBe('HTTP_ERROR');
   });
 
+  it('wraps a non-JSON error body (e.g. proxy HTML) as ApiError, not a SyntaxError', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 502, text: async () => '<html>502 Bad Gateway</html>',
+    }));
+    const err = await apiGet('/api/x').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe('HTTP_ERROR');
+    expect(err.status).toBe(502);
+  });
+
+  it('wraps a non-JSON 200 body as a PARSE_ERROR ApiError', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => 'not json' }));
+    const err = await apiGet('/api/x').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe('PARSE_ERROR');
+  });
+
   it('returns undefined for 204 No Content', async () => {
     mockFetch(204, undefined);
     await expect(apiRequest('/api/users/x', { method: 'DELETE' })).resolves.toBeUndefined();

@@ -5,7 +5,7 @@
 
 import { Request, Response } from 'express';
 
-import { asyncHandler, notFound } from '../middleware/errors';
+import { asyncHandler, conflict, notFound } from '../middleware/errors';
 import { getIngestJob, listIngestJobs, getJobEvents, setIngestStatus } from '../jobs/progress';
 import { cancelIngestJob } from '../jobs/queue';
 import { logger } from '../services/logger';
@@ -26,6 +26,12 @@ export const handleCancelJob = asyncHandler(async (req: Request, res: Response) 
   const jobId = req.params.jobId as string;
   const job = await getIngestJob(jobId);
   if (!job) throw notFound('Job not found');
+
+  // A settled job must not be re-opened: overwriting a 'completed' status to 'cancelled' would also
+  // drop it from sha-dedup (findReusableJobBySha excludes 'cancelled'), forcing a needless re-ingest.
+  if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+    throw conflict(`Job is already ${job.status}`);
+  }
 
   // Best-effort cancel in pg-boss (no-op if already active/completed); reflect it in our record.
   try {

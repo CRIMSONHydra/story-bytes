@@ -78,7 +78,13 @@ export const handleAdminIngest = asyncHandler(async (req: Request, res: Response
     return;
   }
 
-  const jobId = await enqueueIngest({ filePath: workFilePath, workDir, filename: fileName, ext, seriesTitle });
-  await createIngestJob(jobId, { sourceSha256: sha, filename: fileName, seriesTitle });
-  res.status(202).json({ jobId, status: 'queued' });
+  // If enqueue or the job-record write fails, don't orphan the staged work dir on disk.
+  try {
+    const jobId = await enqueueIngest({ filePath: workFilePath, workDir, filename: fileName, ext, seriesTitle });
+    await createIngestJob(jobId, { sourceSha256: sha, filename: fileName, seriesTitle });
+    res.status(202).json({ jobId, status: 'queued' });
+  } catch (error) {
+    await rm(workDir, { recursive: true, force: true }).catch(() => { /* best effort */ });
+    throw error;
+  }
 });

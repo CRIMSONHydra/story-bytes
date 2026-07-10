@@ -22,6 +22,7 @@ import { getIngestJob, listIngestJobs, getJobEvents, setIngestStatus } from '../
 import { cancelIngestJob } from '../jobs/queue';
 
 const job = { jobId: 'j1', filename: 'x.epub', seriesTitle: null, status: 'completed', storyId: 's1', error: null, createdAt: '', updatedAt: '' };
+const queuedJob = { ...job, status: 'queued', storyId: null };
 
 describe('job API', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -49,13 +50,22 @@ describe('job API', () => {
     expect(res.body.jobs).toHaveLength(1);
   });
 
-  it('POST /api/admin/jobs/:jobId/cancel cancels + marks the job', async () => {
-    vi.mocked(getIngestJob).mockResolvedValueOnce(job as never);
+  it('POST /api/admin/jobs/:jobId/cancel cancels a non-terminal job', async () => {
+    vi.mocked(getIngestJob).mockResolvedValueOnce(queuedJob as never);
     vi.mocked(cancelIngestJob).mockResolvedValueOnce({} as never);
     vi.mocked(setIngestStatus).mockResolvedValueOnce(undefined as never);
     const res = await request(createApp()).post('/api/admin/jobs/j1/cancel');
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ jobId: 'j1', status: 'cancelled' });
     expect(setIngestStatus).toHaveBeenCalledWith('j1', 'cancelled');
+  });
+
+  it('POST cancel on a terminal job → 409 and leaves it untouched', async () => {
+    vi.mocked(getIngestJob).mockResolvedValueOnce(job as never); // status: 'completed'
+    const res = await request(createApp()).post('/api/admin/jobs/j1/cancel');
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+    expect(cancelIngestJob).not.toHaveBeenCalled();
+    expect(setIngestStatus).not.toHaveBeenCalled();
   });
 });

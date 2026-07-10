@@ -23,10 +23,9 @@ export function ProfilePicker({ onChange }: ProfilePickerProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let active = true;
-    fetchUsers()
+    const controller = new AbortController();
+    fetchUsers(controller.signal)
       .then((data) => {
-        if (!active) return;
         setUsers(data.users);
         // Auto-select the seeded default the first time (no stored selection yet).
         if (!getCurrentUserId() && data.users.length > 0) {
@@ -35,10 +34,10 @@ export function ProfilePicker({ onChange }: ProfilePickerProps) {
           setCurrent(def.userId);
         }
       })
-      .catch(() => active && setError('Could not load profiles'));
-    return () => {
-      active = false;
-    };
+      .catch((err) => {
+        if (err?.name !== 'AbortError') setError('Could not load profiles');
+      });
+    return () => controller.abort();
   }, []);
 
   const select = (userId: string) => {

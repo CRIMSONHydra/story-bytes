@@ -31,6 +31,7 @@ export const badRequest = (message: string, details?: unknown) =>
 export const invalidId = (message = 'Invalid id') => new ApiError(400, 'INVALID_ID', message);
 export const unauthorized = (message = 'Unauthorized') => new ApiError(401, 'UNAUTHORIZED', message);
 export const notFound = (message = 'Not found') => new ApiError(404, 'NOT_FOUND', message);
+export const conflict = (message = 'Conflict') => new ApiError(409, 'CONFLICT', message);
 
 /** Turn a ZodError into a 400 ApiError carrying flattened field errors. */
 export const fromZod = (err: ZodError, message = 'Invalid request') =>

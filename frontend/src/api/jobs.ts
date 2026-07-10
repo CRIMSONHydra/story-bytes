@@ -38,7 +38,7 @@ export const submitIngest = async (file: File, seriesTitle?: string): Promise<In
   if (seriesTitle) form.append('seriesTitle', seriesTitle);
 
   const res = await fetch(`${API_BASE}/api/admin/ingest`, { method: 'POST', body: form });
-  const body = res.status === 204 ? undefined : await res.json().catch(() => undefined);
+  const body = await res.json().catch(() => undefined); // ingest always returns a JSON body (202/4xx)
   if (!res.ok) {
     const message = body?.error?.message ?? `Upload failed (${res.status})`;
     throw new ApiError(res.status, body?.error?.code ?? 'HTTP_ERROR', message);

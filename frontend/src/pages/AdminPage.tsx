@@ -105,20 +105,30 @@ export default function AdminPage() {
   const pollJob = (jobId: string) => {
     if (pollRef.current) clearInterval(pollRef.current);
     setUploading(true);
+    let attempts = 0;
+    const MAX_ATTEMPTS = 150; // ~5 min at 2s — bounds polling if a job wedges (e.g. worker crash)
+    const stop = () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
+      setUploading(false);
+    };
     const tick = async () => {
+      attempts += 1;
       try {
         const { job, events } = await getJob(jobId);
         setJobEvents(events);
         setUploadStatus(`Job ${job.status}${job.error ? `: ${job.error}` : ''}`);
         if (isTerminal(job.status)) {
-          if (pollRef.current) clearInterval(pollRef.current);
-          pollRef.current = null;
-          setUploading(false);
+          stop();
           localStorage.removeItem(JOB_STORAGE_KEY);
           if (job.status === 'completed') { setFile(null); setSelectedSeries(''); fetchStories(); }
+        } else if (attempts >= MAX_ATTEMPTS) {
+          stop();
+          setUploadStatus('Still processing — stopped polling. Reload the page to resume tracking.');
         }
       } catch {
-        /* transient poll error — keep trying */
+        /* transient poll error — keep trying until MAX_ATTEMPTS */
+        if (attempts >= MAX_ATTEMPTS) stop();
       }
     };
     void tick();
@@ -130,7 +140,7 @@ export default function AdminPage() {
     const saved = localStorage.getItem(JOB_STORAGE_KEY);
     if (saved) pollJob(saved);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: resume in-flight job polling
   }, []);
 
   const handleUpload = async (e: React.FormEvent) => {

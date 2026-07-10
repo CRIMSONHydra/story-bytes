@@ -27,8 +27,12 @@ export const runEnrichPipeline = async (data: EnrichJobData & { parentJobId?: st
     if (seriesTitle) {
       const seriesIds = await getStoryIdsBySeriesTitle(seriesTitle);
       for (const sid of seriesIds) {
-        if (sid !== data.storyId) {
+        if (sid === data.storyId) continue;
+        // Isolate each sibling: one failure shouldn't skip the rest (enrichment is non-fatal).
+        try {
           await runPythonJson(projectRoot, ['ingestion/enrich_images.py', '--story-id', sid]);
+        } catch (siblingErr) {
+          logger.warn({ err: siblingErr, storyId: sid }, 'Sibling enrichment failed (non-fatal)');
         }
       }
     }

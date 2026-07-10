@@ -37,7 +37,13 @@ export const startJobs = async (): Promise<void> => {
   await boss.work<IngestJobData>(QUEUE_INGEST, SERIAL, async ([job]: Job<IngestJobData>[]) => {
     const storyId = await runIngestPipeline(job.id, job.data);
     if (storyId) {
-      await requireBoss().send(QUEUE_ENRICH, { storyId, parentJobId: job.id }, { retryLimit: 1 });
+      // Enqueue enrichment out-of-band: a send failure must NOT fail (and thus retry) an already
+      // successful ingest whose upload files are already cleaned up. Enrichment is best-effort polish.
+      try {
+        await requireBoss().send(QUEUE_ENRICH, { storyId, parentJobId: job.id }, { retryLimit: 1 });
+      } catch (err) {
+        logger.error({ err, storyId, jobId: job.id }, 'Failed to enqueue enrich job (non-fatal)');
+      }
     }
   });
 
@@ -56,7 +62,10 @@ export const stopJobs = async (): Promise<void> => {
 };
 
 export const enqueueIngest = async (data: IngestJobData): Promise<string> => {
-  const jobId = await requireBoss().send(QUEUE_INGEST, data, { retryLimit: 1 });
+  // retryLimit 0: the pipeline is NOT idempotent and its worker unconditionally deletes the staged
+  // upload in a `finally`, so a retry would only fail with "file not found" AND overwrite the real
+  // failure reason in the DB. One attempt; failures surface via the job's status/events.
+  const jobId = await requireBoss().send(QUEUE_INGEST, data, { retryLimit: 0 });
   if (!jobId) throw new Error('Failed to enqueue ingest job');
   return jobId;
 };
