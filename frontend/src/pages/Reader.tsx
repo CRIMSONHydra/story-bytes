@@ -4,6 +4,7 @@ import ChatInterface from '../components/ChatInterface';
 import ComicViewer from '../components/ComicViewer';
 
 import { API_BASE } from '../config';
+import { apiPut } from '../api/client';
 
 interface Story {
   story_id: string;
@@ -65,12 +66,9 @@ export default function Reader() {
       .then(data => {
         setChapter(data);
         setLoading(false);
-        // Track reading progress
-        fetch(`${API_BASE}/api/stories/${storyId}/progress`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chapterOrder: data.chapter_order }),
-        }).catch(() => { /* best effort */ });
+        // Track reading progress for the active profile (client injects the x-user-id header).
+        apiPut(`/api/stories/${storyId}/progress`, { chapterOrder: data.chapter_order })
+          .catch(() => { /* best effort */ });
       })
       .catch(err => {
         console.error('Failed to load chapter:', err);

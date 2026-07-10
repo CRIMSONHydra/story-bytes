@@ -30,7 +30,7 @@ export const handleChat = asyncHandler(async (req: Request, res: Response) => {
   if (!validation.success) throw fromZod(validation.error);
 
   const { query, storyId, currentChapter, mode } = validation.data;
-  const userId = (req.headers['x-user-id'] as string) || DEFAULT_USER_ID;
+  const userId = req.userId ?? DEFAULT_USER_ID;
 
   try {
     const result = await answerQuery(query, storyId, currentChapter, mode, userId);

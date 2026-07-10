@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { API_BASE } from '../config';
+import { apiGet } from '../api/client';
 
 interface Story {
   story_id: string;
@@ -84,9 +85,10 @@ export default function StoryList() {
         await Promise.all(
           (data as Story[]).map(async (story) => {
             try {
-              const res = await fetch(`${API_BASE}/api/stories/${story.story_id}/progress`);
-              if (!res.ok) return;
-              const prog = await res.json();
+              // Active-profile progress (client injects x-user-id).
+              const prog = await apiGet<{ lastChapterOrder: number; lastChapterTitle?: string }>(
+                `/api/stories/${story.story_id}/progress`,
+              );
               if (prog.lastChapterOrder > 0) {
                 progressMap[story.story_id] = {
                   chapterOrder: prog.lastChapterOrder,

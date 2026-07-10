@@ -1,0 +1,46 @@
+.profile-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.profile-picker__label {
+  color: var(--text-muted, #888);
+  font-weight: 500;
+}
+
+.profile-picker__select,
+.profile-picker__input {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border, #444);
+  border-radius: 6px;
+  background: var(--surface, #1e1e24);
+  color: inherit;
+  font: inherit;
+}
+
+.profile-picker__new {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.profile-picker__add,
+.profile-picker__new button {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border, #444);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.profile-picker__add:hover,
+.profile-picker__new button:hover {
+  background: var(--surface-hover, #2a2a33);
+}
+
+.profile-picker__error {
+  color: var(--error, #ff6b6b);
+}

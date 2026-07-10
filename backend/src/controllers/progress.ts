@@ -10,7 +10,7 @@ const progressSchema = z.object({
 
 export const handleGetProgress = asyncHandler(async (req: Request, res: Response) => {
   const storyId = req.params.storyId as string;
-  const userId = (req.headers['x-user-id'] as string) || DEFAULT_USER_ID;
+  const userId = req.userId ?? DEFAULT_USER_ID;
 
   const progress = await getReadingProgress(userId, storyId);
   res.json({
@@ -22,7 +22,7 @@ export const handleGetProgress = asyncHandler(async (req: Request, res: Response
 
 export const handleUpdateProgress = asyncHandler(async (req: Request, res: Response) => {
   const storyId = req.params.storyId as string;
-  const userId = (req.headers['x-user-id'] as string) || DEFAULT_USER_ID;
+  const userId = req.userId ?? DEFAULT_USER_ID;
   const validation = progressSchema.safeParse(req.body);
   if (!validation.success) throw fromZod(validation.error);
 

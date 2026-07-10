@@ -13,6 +13,7 @@ import { handleGetStoryGraph, handleSearchEntities, handleGetEntity, handleGetTh
 import { handleGetAssetImage, handleGetStoryImage } from './controllers/assets';
 import { handleGetProgress, handleUpdateProgress } from './controllers/progress';
 import { handleAdminGetStories, handleAdminDeleteStory, handleAdminIngest, handleGetSeries, handleGetTrace } from './controllers/admin';
+import { handleListUsers, handleGetUser, handleCreateUser, handleUpdateUser, handleDeleteUser } from './controllers/users';
 import { upload } from './middleware/upload';
 import { adminAuth } from './middleware/adminAuth';
 import { chatLimiter, ingestLimiter } from './middleware/rateLimits';
@@ -57,6 +58,13 @@ router.get('/stories/:storyId/series-chapters', asyncHandler(async (req, res) =>
 // Reading Progress (Phase 5)
 router.get('/stories/:storyId/progress', handleGetProgress);
 router.put('/stories/:storyId/progress', handleUpdateProgress);
+
+// Users / profiles (M4)
+router.get('/users', handleListUsers);
+router.post('/users', handleCreateUser);
+router.get('/users/:id', handleGetUser);
+router.put('/users/:id', handleUpdateUser);
+router.delete('/users/:id', handleDeleteUser);
 
 // Series
 router.get('/series', handleGetSeries);

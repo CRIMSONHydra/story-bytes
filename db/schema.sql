@@ -127,6 +127,22 @@ CREATE INDEX IF NOT EXISTS idx_chapter_embeddings_vector
     ON chapter_embeddings USING hnsw (vector vector_cosine_ops);
 
 -- ---------------------------------------------------------------------------
+-- Users / profiles (M4). Mirrors migration 1700000000005.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS users (
+    user_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    display_name  TEXT NOT NULL,
+    avatar_color  TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO users (user_id, display_name, avatar_color)
+VALUES ('00000000-0000-0000-0000-000000000001', 'Default Reader', '#6c8cff')
+ON CONFLICT (user_id) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
 -- Annotations (user notes, QA spans, spoiler tags, etc.)
 -- ---------------------------------------------------------------------------
 
@@ -135,7 +151,7 @@ CREATE TABLE IF NOT EXISTS annotations (
     story_id        UUID NOT NULL REFERENCES stories(story_id) ON DELETE CASCADE,
     chapter_id      UUID REFERENCES chapters(chapter_id) ON DELETE CASCADE,
     block_id        UUID REFERENCES chapter_blocks(block_id) ON DELETE SET NULL,
-    user_id         UUID,
+    user_id         UUID REFERENCES users(user_id) ON DELETE SET NULL,
     tag             TEXT,
     note            TEXT,
     start_char      INT,
@@ -225,7 +241,7 @@ CREATE INDEX IF NOT EXISTS idx_blocks_text_fts
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS reading_progress (
-    user_id             UUID NOT NULL,
+    user_id             UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     story_id            UUID NOT NULL REFERENCES stories(story_id) ON DELETE CASCADE,
     last_chapter_order  INT NOT NULL DEFAULT 0,
     updated_at          TIMESTAMPTZ DEFAULT NOW(),
