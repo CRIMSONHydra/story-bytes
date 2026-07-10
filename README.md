@@ -1,6 +1,15 @@
 # Story Bytes
 
-Local-first toolkit for building a story knowledge base with chapter summaries, Q&A, and multimodal context. Ingest novels (EPUB) and comics (CBZ/CBR), embed content with Gemini, and chat with an AI assistant that respects spoiler boundaries.
+Local-first toolkit for reading novels (EPUB) and comics (CBZ/CBR) with a **spoiler-aware** AI companion. Ingest a story, embed it with Gemini, and chat, summarize, or get a catch-me-up recap — the assistant only ever references content up to your current chapter, so it never spoils what's ahead.
+
+### Key capabilities
+
+- **Spoiler-safe RAG chat** — three modes (recall, foreshadowing analysis, theory), grounded answers with citations, a confidence signal, and a fail-closed spoiler guard. Retrieval is bounded server-side by your reading position.
+- **Catch-me-up recap** — a "story so far" up to chapter N, with opt-in, spoiler-safe foreshadowing emphasis (setup + a vetted hint; the payoff is never revealed).
+- **Chapter-versioned knowledge graph** — entities, relationships, events, and plot threads, all gated so an unrevealed entity is a 404, not a leak. Browsable in an interactive graph UI.
+- **Multi-profile** — local reader profiles; reading progress and chat scope follow the selected profile.
+- **Async self-serve ingestion** — upload an EPUB/CBZ/CBR; the pipeline (extract → embed → tag/enrich images) runs in the background with live progress.
+- **Operable** — structured error envelope + request ids, pino logging, admin auth, rate limits, and read-time LLM cost accounting.
 
 ## Quick Start (Docker)
 
@@ -47,13 +56,15 @@ pnpm install
 |--------------------|-------------------------------------------------------------|
 | Backend API        | Express 5 + TypeScript (Node 20+)                           |
 | Frontend           | React 19 + TypeScript via Vite (Rolldown)                   |
-| Data Pipelines     | Python 3.12+ (managed via `uv`)                             |
-| Database           | PostgreSQL 18+ with `pgvector` extension                    |
-| Embeddings         | Google Gemini `gemini-embedding-001` (768-dim)              |
-| LLM                | Google Gemini 2.5 Flash                                     |
+| Data Pipelines     | Python 3.12+ (managed via `uv`, `pyproject.toml` + `uv.lock`)|
+| Database           | PostgreSQL 18+ with `pgvector`; migrations via node-pg-migrate |
+| Embeddings         | Google Gemini `gemini-embedding-2` (1536-dim MRL)           |
+| LLM                | Google Gemini `gemini-flash-lite-latest` (demo default; override via env) |
 | Vector Search      | pgvector HNSW cosine similarity                             |
+| Async jobs         | pg-boss (background ingestion/enrichment)                   |
+| Logging / limits   | pino + pino-http, express-rate-limit                        |
 | Container          | Docker Compose (app + DB)                                   |
-| CI/CD              | GitHub Actions                                              |
+| CI/CD              | GitHub Actions (lint · build · migrate · tests · smoke)     |
 
 ## Repo Layout
 
@@ -94,6 +105,9 @@ processed/        JSON output from ingestion (git-ignored)
 | `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) | Embeddings + LLM generation |
 | `GOOGLE_SEARCH_API_KEY` | [Google Cloud Console](https://console.cloud.google.com/) | Web search for external knowledge |
 | `GOOGLE_CX` | [Programmable Search](https://programmablesearchengine.google.com/) | Custom search engine ID |
+| `ADMIN_TOKEN` _(optional)_ | you choose | If set, `/api/admin/*` requires `Authorization: Bearer <token>` (unset ⇒ open, with a boot warning) |
+
+Optional model/logging overrides (`GEMINI_MAIN_MODEL`, `GEMINI_EMBEDDING_DIMS`, `LOG_LEVEL`, …) are documented in `.env.example`.
 
 ## Getting Started
 
@@ -121,12 +135,11 @@ cp .env.example .env
 
 # 2. Install dependencies
 pnpm install
-uv venv --python 3.12
-uv pip install -r ingestion/requirements.txt
+uv sync --project ingestion          # installs the locked Python env
 
-# 3. Database
+# 3. Database — apply migrations (node-pg-migrate)
 sudo service postgresql start
-PGPASSWORD=1234321 psql -h localhost -p 5433 -U postgres -d postgres -f db/schema.sql
+cd backend && DATABASE_URL=postgresql://postgres:1234321@localhost:5433/postgres pnpm migrate:up && cd ..
 
 # 4. Run with hot reload
 ./run.sh --dev
@@ -134,17 +147,17 @@ PGPASSWORD=1234321 psql -h localhost -p 5433 -U postgres -d postgres -f db/schem
 # Frontend: http://localhost:5173
 ```
 
-### Ingest Content (CLI)
+`db/schema.sql` is the first-boot bootstrap + drift reference; ongoing changes live in `db/migrations/`.
+
+### Ingest Content
+
+The simplest path is the **Admin page** (http://localhost → Admin): upload an EPUB/CBZ/CBR and watch
+the async job progress. Or run the pipeline steps directly under the locked project env:
 
 ```bash
-# Extract EPUB to JSON
-uv run python ingestion/epub/extract_epub.py dataset/<book_folder> -o processed -v
-
-# Load into database with image tagging
-uv run python ingestion/load_to_db.py processed/<filename>.json --tag-images
-
-# Enrich image metadata with story context
-uv run python ingestion/enrich_images.py --all
+uv run --project ingestion python ingestion/epub/extract_epub.py dataset/<book_folder> -o processed -v
+uv run --project ingestion python ingestion/load_to_db.py processed/<filename>.json --tag-images
+uv run --project ingestion python ingestion/enrich_images.py --all
 ```
 
 ## API Endpoints
@@ -156,17 +169,21 @@ uv run python ingestion/enrich_images.py --all
 | GET | `/api/stories/:id` | Get story by ID |
 | GET | `/api/stories/:storyId/chapters` | Get chapters (filters front-matter) |
 | GET | `/api/chapters/:id` | Get chapter with content blocks |
-| POST | `/api/chat` | RAG-powered Q&A (spoiler-aware) |
+| POST | `/api/chat` | RAG-powered Q&A (spoiler-aware; recall/foreshadowing/theory) |
 | POST | `/api/stories/:storyId/summarize` | Generate chapter summary |
-| GET | `/api/assets/:assetId/image` | Serve asset image |
-| GET | `/api/stories/:storyId/image?path=...` | Serve image from EPUB |
-| GET | `/api/stories/:storyId/progress` | Get reading progress |
-| PUT | `/api/stories/:storyId/progress` | Update reading progress |
-| GET | `/api/stories/:storyId/series-chapters` | Cross-volume chapter list |
-| GET | `/api/series` | List distinct series |
-| GET | `/api/admin/stories` | Admin: stories with counts |
+| GET | `/api/stories/:storyId/recap` | Catch-me-up recap (`?upToChapter=N&foreshadow=1`) |
+| GET | `/api/stories/:storyId/graph` · `/entities/:id` · `/threads` | Spoiler-gated knowledge graph (M15) |
+| GET | `/api/assets/:assetId/image` · `/api/stories/:storyId/image?path=...` | Serve images |
+| GET/PUT | `/api/stories/:storyId/progress` | Reading progress (per profile) |
+| GET | `/api/stories/:storyId/series-chapters` · `/api/series` | Cross-volume / series listing |
+| GET/POST/PUT/DELETE | `/api/users`, `/api/users/:id` | Profiles CRUD (M4) |
+| POST | `/api/admin/ingest` | **Async** upload → `202 {jobId}` (M5) |
+| GET | `/api/jobs/:jobId` | Ingest job status + progress events (M5) |
+| GET | `/api/admin/stories` · `/api/admin/jobs` · `/api/admin/usage` | Admin: stories · jobs · LLM cost |
 | DELETE | `/api/admin/stories/:storyId` | Admin: delete story |
-| POST | `/api/admin/ingest` | Admin: upload and ingest file |
+
+`/api/admin/*` requires `Authorization: Bearer $ADMIN_TOKEN` when `ADMIN_TOKEN` is set. All errors use a
+single envelope: `{ error: { code, message, details?, requestId } }`.
 
 ## Scripts
 
@@ -182,14 +199,19 @@ uv run python ingestion/enrich_images.py --all
 ### Running Tests
 
 ```bash
-pnpm test                              # 49 backend tests
-uv run pytest ingestion/tests/ -v      # 133 Python tests
-pnpm lint                              # Lint both packages
-pnpm build                             # Type-check + build
+pnpm test                                              # backend (109) + frontend (25) via pnpm -r
+uv run --project ingestion python -m pytest ingestion/tests/ -v   # 169 Python tests
+pnpm lint                                              # Lint both packages (zero-warning policy)
+pnpm build                                             # Type-check + build both
 ```
+
+Backend tests use Vitest + Supertest (`backend/src/__tests__/`); frontend uses Vitest + React Testing
+Library + jsdom (`*.test.tsx` beside the code).
 
 ### CI/CD
 
-GitHub Actions runs on every push/PR to master:
-1. Lint → Build → Backend tests → Python tests
-2. On master merge: Docker build + push to Docker Hub
+GitHub Actions runs on every push/PR:
+1. Lint → Build → apply migrations → unit tests (backend + frontend) → Python tests (`uv sync --locked`)
+2. **smoke** — `docker compose up` and assert the image boots migrated (`/health` db:ok, `X-API-Version`,
+   `/api/stories` 200, admin-without-token 401, 404 envelope)
+3. On master merge (gated on test + smoke): Docker build + push to Docker Hub
