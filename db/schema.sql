@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS chapters (
     aggregated_text TEXT,
     raw_html        JSONB DEFAULT '[]',
     metadata        JSONB DEFAULT '{}',
+    content_hash    TEXT,                              -- M11: skip unchanged chapters on re-ingest
+    is_front_matter BOOLEAN NOT NULL DEFAULT FALSE,    -- M11
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -95,6 +97,9 @@ CREATE TABLE IF NOT EXISTS assets (
 
 CREATE INDEX IF NOT EXISTS idx_assets_story
     ON assets (story_id);
+
+-- M11: idempotent image upsert target across re-ingests.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_assets_story_href ON assets (story_id, href);
 
 -- ---------------------------------------------------------------------------
 -- Embeddings (chapter-level and block-level)
