@@ -7,6 +7,7 @@ import ChatPage from './pages/ChatPage';
 import AdminPage from './pages/AdminPage';
 import RecapPage from './pages/RecapPage';
 import ChapterManager from './pages/ChapterManager';
+import CastPage from './pages/CastPage';
 import { ProfilePicker } from './components/ProfilePicker';
 
 // Lazy-loaded so the heavy vis-network dependency is only fetched when a reader
@@ -34,6 +35,7 @@ function App() {
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/story/:storyId/recap" element={<RecapPage />} />
             <Route path="/story/:storyId/manage" element={<ChapterManager />} />
+            <Route path="/story/:storyId/cast" element={<CastPage />} />
             <Route
               path="/story/:storyId/graph"
               element={

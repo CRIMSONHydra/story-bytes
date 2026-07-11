@@ -28,3 +28,12 @@ export const EMBEDDING_MODEL_ID = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-
 
 /** Output dimensionality (MRL). 1536 is a recommended size, HNSW-indexable (<=2000), auto-normalized. */
 export const EMBEDDING_DIMENSIONS = Number(process.env.GEMINI_EMBEDDING_DIMS || 1536);
+
+/**
+ * Image generation (M17). Nano-Banana (gemini-2.5-flash-image) via generateContent image output.
+ * Live generation is gated + capped: IMAGE_GEN_ENABLED (default on), IMAGE_GEN_DAILY_CAP images/day.
+ * Generated character images are private (served from disk; no public sharing) per the IP posture.
+ */
+export const IMAGE_GEN_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
+export const IMAGE_GEN_ENABLED = (process.env.IMAGE_GEN_ENABLED || 'true') !== 'false';
+export const IMAGE_GEN_DAILY_CAP = Number(process.env.IMAGE_GEN_DAILY_CAP || 25);

@@ -597,14 +597,33 @@ reaches context/response; lens-off recap byte-identical to non-foreshadowing). �
 **➡ Upgrade Recap** with "Main cast right now" + "Open questions" + the opt-in "Threads worth keeping an eye on" (2.14)
 sections here.
 
-**M16 — Image entities/canon (on shared entities) + archive helper** · *Image A1–A4* · prereq: M14, M5, M8 · **(2.10)**
+**M16 — Image entities/canon (on shared entities) + archive helper** · *Image A1–A4* · prereq: M14, M5, M8 · ✅ **DONE**
+(migration `..._image_canon`: `entity_appearance_facts` + `generated_images` FK'd to `kg_entities`;
+`services/canon.ts` `buildCanon` slices facts ≤ boundary + supersedes by latest chapter + hashes
+[post-boundary traits never enter the canon]; `services/archiveImages.ts` shared EPUB/CBZ extractor,
+`assets.ts` consumes it. Appearance-facts LLM population folds into M-Backfill; M17 falls back to a
+generic prompt when facts are absent. 5 canon tests.)
+
+Original scope:
 `services/archiveImages.ts` (shared JSZip/EPUB+CBZ helper; `controllers/assets.ts` consumes it). `entity_appearance_facts`
 + `generated_images` tables FK'd to `kg_entities`. Fold canon extraction into the M14 pass (appearance-facts branch;
 comic `enriched_metadata` mining add-on). `canon.ts` (slice ≤ boundary + supersession + `canonHash`). **Rewrite** the
 image-gen §3.4 "lazy fallback" (VAGUE — see §7): entities now pre-exist, so the fallback triggers only when facts are
 absent-but-entity-present; give it a bounded timeout inside the request.
 
-**M17 — Image generation service + Cast UI** · *Image A5–A9* · prereq: M16, M4, M5
+**M17 — Image generation service + Cast UI** · *Image A5–A9* · prereq: M16, M4, M5 · ✅ **DONE**
+(`promptBuilder.ts` pure + spoiler-structural: the prompt is built from the canon ONLY — no name, no
+free-text description — so a post-boundary trait can't reach the model; `generator.ts` live
+`gemini-2.5-flash-image` via `@google/genai` (bounded retry); `imageGen.ts` cache→cap→gate state
+machine (one image per (entity, canon_hash); IMAGE_GEN_DAILY_CAP/day; IMAGE_GEN_ENABLED), disk-served
+private images; endpoints `GET /cast`, `POST /entities/:id/image` (admin, upToChapter required,
+unrevealed→404), `GET /generated-images/:id`; `CastPage` grid + generate + lightbox, linked from the
+story list. **Verified live:** a real 1.3 MB portrait generated on flash-lite-image, cache hit on
+re-request, stored prompt carried no name/description/post-boundary trait. Golden prompt test + state-
+machine tests (spoiler-gate/cache/cap/generate/fail). Deferred: comic `referenceImages.ts`.
+→ **Human checkpoint #7 answered** (model = gemini-2.5-flash-image, ~25/day cap, private/no-share).)
+
+Original scope:
 `promptBuilder.ts` (pure, spoiler-safety structural — post-boundary facts never enter the prompt), `referenceImages.ts`
 (comics; visible-alias-scoped panel selection), `generator.ts` (Nano-Banana via `@google/genai`; blocked/429-retry/cap/
 cache/force state machine; **bound retries so worst-case < 120s nginx timeout**, or queue it). `generated_images` served

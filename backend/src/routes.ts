@@ -20,6 +20,7 @@ import {
   handleListChaptersAdmin, handleUpdateChapter, handleDeleteChapter,
   handleReorderChapters, handleAppendChapter, handleEstimateAppend,
 } from './controllers/chapterAdmin';
+import { handleGetCast, handleGenerateEntityImage, handleServeGeneratedImage } from './controllers/images';
 import { upload } from './middleware/upload';
 import { adminAuth } from './middleware/adminAuth';
 import { chatLimiter, ingestLimiter } from './middleware/rateLimits';
@@ -52,6 +53,11 @@ router.post('/stories/:storyId/summarize', handleSummarize);
 
 // Recap — catch-me-up composition with opt-in foreshadowing emphasis (Improvement Plan §2.12, §2.14)
 router.get('/stories/:storyId/recap', handleGetRecap);
+
+// Character images (M17) — upToChapter required; unrevealed entity 404s. Generation is gated (cost).
+router.get('/stories/:storyId/cast', handleGetCast);
+router.post('/stories/:storyId/entities/:entityId/image', adminAuth, handleGenerateEntityImage);
+router.get('/generated-images/:imageId', handleServeGeneratedImage);
 
 // Knowledge graph (M15) — upToChapter required on all; spoiler-gated
 router.get('/stories/:storyId/graph', handleGetStoryGraph);
