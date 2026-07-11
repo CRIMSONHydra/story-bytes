@@ -114,7 +114,7 @@ const parseJsonResponse = (text: string): Record<string, unknown> | null => {
 };
 
 /**
- * Generates an embedding vector for the given text using Google's gemini-embedding-001 model.
+ * Embedding model id + tag. Vectors are generated with gemini-embedding-2 (see config/models.ts).
  *
  * @param text - The text to generate an embedding for
  * @returns Promise resolving to an array of numbers representing the embedding vector

@@ -427,7 +427,7 @@ Add `middleware/adminAuth.ts` (optional `ADMIN_TOKEN`, `timingSafeEqual`, 401), 
 (chat 20/min, ingest 6/hr, api 300/min), `env.validateAtBoot()`.
 *DONE+:* error-envelope tests per class; 401 without token; 429 after N chat calls.
 
-**M2 — Migration tooling + idempotent baseline** · *Platform F4* · prereq: M1 · **collision-dissolver (2.1)**
+**M2 — Migration tooling + idempotent baseline** · *Platform F4* · prereq: M1 · **collision-dissolver (2.1)** · ✅ **DONE**
 Add `node-pg-migrate` (dev-dep, `-j sql`). Write `..._baseline.sql` = idempotent superset of `schema.sql ∪ 001–007`;
 move `001–007` to `db/migrations/legacy/`. `docker/start.sh` runs `migrate up` (with DB wait) before supervisord.
 Demote `db/schema.sql` to first-boot bootstrap + drift reference.
@@ -489,13 +489,13 @@ CI: pnpm caching, `uv sync --locked` + pytest, frontend tests, **`smoke` job** (
 
 ### Phase B — RAG walking skeleton (delivers the catch-up experience; parallel with A after M2)
 
-**M7 — Eval harness** · *RAG D1* · prereq: a running stack (starts at M1)
+**M7 — Eval harness** · *RAG D1* · prereq: a running stack (starts at M1) · ✅ **DONE**
 Top-level `eval/` (uv-run, hits the HTTP API): `run_eval.py`, `judge.py`, golden `qa.yaml` + `spoiler_probes.yaml` +
 `retrieval.yaml` for the two seed stories (~30 each). Metrics: **spoiler-leak rate (target 0, hard gate)**, point
 coverage, faithfulness, recall@8, citation precision, latency, $/query. Baseline the *current* pipeline first so every
 later change is measured.
 
-**M8 — Spoiler hardening + decomposition + LLM plumbing** · *RAG D2–D4* · prereq: M2, M7 · **(2.8, 2.9, 2.10)**
+**M8 — Spoiler hardening + decomposition + LLM plumbing** · *RAG D2–D4* · prereq: M2, M7 · **(2.8, 2.9, 2.10)** · ✅ **DONE**
 `resolveSpoilerScope` (server-resolved, NULL=deny) as shared middleware; migration for `volume_number` +
 `getStoriesInSeries` ordering + assets `first_chapter_order`/`is_cover` + `uq_chapters_story_order` (the
 spoiler-critical set of 2.10). Split `rag.ts`→`services/rag/*` and `db.ts`→`services/db/*` with re-export shims (zero
@@ -505,7 +505,7 @@ the `DISTINCT ON` image-ordering and cross-volume image bugs.
 predicates**; eval spoiler-probe leak rate 0; decomposition provably behavior-neutral. → **Human checkpoint #3** (two
 behavior changes: no-`storyId` chat loses retrieval; omitted `currentChapter` → progress/0).
 
-**M9 — Citations/confidence/traces + chunking & re-embed** · *RAG D5–D6 (+ ingestion C12)* · prereq: M8, M4
+**M9 — Citations/confidence/traces + chunking & re-embed** · *RAG D5–D6 (+ ingestion C12)* · prereq: M8, M4 · ✅ **DONE**
 Structured-output generation → validated citations (drop hallucinated labels), `confidence`, `insufficient_context`;
 `rag_traces` table; **502 (not 200-apology)** on pipeline failure; frontend confidence badge + snippet tooltips.
 Loader-side block re-chunking (>1600→~1200 + overlap), `backfill_embeddings.py`, `EMBEDDING_MODEL_TAG` cutover; re-embed
@@ -530,7 +530,7 @@ empty `chapter_embeddings` (the summary retrieval tier); `contextBuilder.ts` bud
 *DONE+:* eval point coverage +≥15 pts, recall@8 +≥20 pts on multi-hop/alias subsets, p95 ≤ 8s.
 **➡ Ship the text-only Recap (2.12) here** (summary + micro-summaries + last event), wired as the story-list "Continue".
 
-**M10b — Answer guard + eval CI** · *RAG D12–D13* · prereq: M10 · **(2.14.4)**
+**M10b — Answer guard + eval CI** · *RAG D12–D13* · prereq: M10 · **(2.14.4)** · ✅ **DONE**
 `answerGuard.ts` (Flash-Lite groundedness check, revise/block loop, fail-closed for recall — the training-data-leak
 backstop); **add the payoff-leak-check mode (2.14)** — a variant that checks generated text against a supplied set of
 `payoff_summary` strings (used both offline by the foreshadow extractor and online by the recap/foreshadowing paths),
@@ -540,14 +540,14 @@ supplied payoff fact (unit-tested with a known setup/payoff fixture).
 
 ### Phase C — Feature pillars (parallelizable after their prereqs)
 
-**M11 — Incremental loader + ingestion schema + JSONL** · *Ingestion C1–C3* · prereq: M2, M3, M8
+**M11 — Incremental loader + ingestion schema + JSONL** · *Ingestion C1–C3* · prereq: M2, M3, M8 · ✅ **DONE**
 `content_hash`/`is_front_matter`/`source_sha256` + `(story_id, href)` assets unique (the ingest set of 2.10, using
 `IF NOT EXISTS` on the shared chapter constraint); `--mode diff|append|replace` with per-chapter transactions +
 hash-skip; `ON CONFLICT (external_id)` story upsert; `--extract-images`/`--images-dir` so tagging works on uploads.
 Diff `content_hash` computed **after** the loader chunking from M9.
 *DONE+:* re-ingest of an unchanged EPUB reports `skipped == chapter_count` and **$0.00**; crash-retry idempotent.
 
-**M12 — Async ingest on pg-boss + upload UX** · *Ingestion C4–C6* · prereq: M5, M4, M11
+**M12 — Async ingest on pg-boss + upload UX** · *Ingestion C4–C6* · prereq: M5, M4, M11 · ✅ **DONE** (delivered by M5)
 Ingest pipeline runs inside pg-boss handlers (series re-enrich = N queued jobs, not an inline loop); optional SSE
 progress on `job_events`; `UploadPanel`/`JobsPanel` with live stage/progress, cancel, survives navigation.
 
@@ -569,7 +569,7 @@ PyMuPDF); re-enrich/re-embed triggers; estimate-then-confirm cost gate reading `
 *DONE+:* appending one chapter to a 50-chapter book embeds **only that chapter's blocks** (assert via `llm_usage`
 deltas). *(Web-serial URL fetch is NOT shipped — RoyalRoad ToS; paste covers the need. See §6/§7.)*
 
-**M14 — Shared entity foundation + unified extraction** · *KG E1–E3* · prereq: M2, M5, M8 · **(2.2, 2.3)**
+**M14 — Shared entity foundation + unified extraction** · *KG E1–E3* · prereq: M2, M5, M8 · **(2.2, 2.3)** · ✅ **DONE**
 Migration `kg_entities` + `kg_entity_aliases` (+ `kg_entity_states`, relationships, events, threads, evidence, links,
 `kg_extraction_runs` — the full KG schema, but the *entity+alias* subset is what unblocks others). `ingestion/graph/`
 (`prompts.py`, `merge.py` pure alias-merge, `writer.py` per-chapter transactions, `extract_graph.py` with resume +
@@ -582,7 +582,7 @@ extraction-time payoff-leak guard from M10b).
 `first_chapter_order` correct; **every stored `emphasis_hint` passes the payoff-leak guard (2.14.7)**. → **Human
 checkpoint #5** (plain tables not Apache AGE; this is THE shared entity table; volume_number handling).
 
-**M15 — KG service + reader API + GraphRAG wiring + graph UI** · *KG E4–E10* · prereq: M14, M8
+**M15 — KG service + reader API + GraphRAG wiring + graph UI** · *KG E4–E10* · prereq: M14, M8 · ✅ **DONE**
 `services/graph.ts` (`linkEntities`, `getEgoNetwork` recursive-CTE with temporal predicates, `getOpenThreads`,
 `getStoryGraph`, `getVisibleAliases`); reader endpoints (`upToChapter` **required**, entity-404-when-unrevealed);
 GraphRAG as a `services/rag/graphContext.ts` arm (alias keyword expansion + KNOWLEDGE GRAPH prompt section + OPEN PLOT
