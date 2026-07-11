@@ -7,8 +7,9 @@ import { getAdminStories, deleteStory, getDistinctSeries } from '../services/adm
 import { getRagTrace } from '../services/db';
 import { getProjectRoot } from './assets';
 import { asyncHandler, badRequest, invalidId, notFound } from '../middleware/errors';
-import { enqueueIngest } from '../jobs/queue';
+import { enqueueIngest, enqueueBackfill } from '../jobs/queue';
 import { createIngestJob, findReusableJobBySha } from '../jobs/progress';
+import { getStoryById } from '../services/db';
 import { ALLOWED_EXTENSIONS } from '../middleware/upload';
 
 const uuidSchema = z.string().uuid();
@@ -28,6 +29,18 @@ export const handleGetSeries = asyncHandler(async (_req: Request, res: Response)
 
 export const handleAdminGetStories = asyncHandler(async (_req: Request, res: Response) => {
   res.json(await getAdminStories());
+});
+
+/** M-Backfill: bring an existing story up to the current feature set (graph → foreshadow → appearance). */
+export const handleBackfillStory = asyncHandler(async (req: Request, res: Response) => {
+  const parsed = uuidSchema.safeParse(req.params.storyId);
+  if (!parsed.success) throw invalidId('Invalid story ID');
+  const story = await getStoryById(parsed.data);
+  if (!story) throw notFound('Story not found');
+
+  const jobId = await enqueueBackfill({ storyId: parsed.data });
+  await createIngestJob(jobId, { filename: `backfill: ${story.title}` });
+  res.status(202).json({ jobId, status: 'queued' });
 });
 
 export const handleAdminDeleteStory = asyncHandler(async (req: Request, res: Response) => {

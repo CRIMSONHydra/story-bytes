@@ -5,6 +5,12 @@
 export const QUEUE_INGEST = 'ingest';
 export const QUEUE_ENRICH = 'enrich-story';
 export const QUEUE_THEORY = 'theory-submission';
+export const QUEUE_BACKFILL = 'backfill';
+
+/** Payload for a backfill job (M-Backfill) — bring a story up to the current feature set. */
+export interface BackfillJobData {
+  storyId: string;
+}
 
 /** Payload for a theory-submission job (M19). The pasted text is staged to `filePath`. */
 export interface TheoryJobData {

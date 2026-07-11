@@ -10,10 +10,14 @@ import type { Job } from 'pg-boss';
 
 import { env } from '../config/env';
 import { logger } from '../services/logger';
-import { QUEUE_INGEST, QUEUE_ENRICH, QUEUE_THEORY, type IngestJobData, type EnrichJobData, type TheoryJobData } from './types';
+import {
+  QUEUE_INGEST, QUEUE_ENRICH, QUEUE_THEORY, QUEUE_BACKFILL,
+  type IngestJobData, type EnrichJobData, type TheoryJobData, type BackfillJobData,
+} from './types';
 import { runIngestPipeline } from './handlers/ingest';
 import { runEnrichPipeline } from './handlers/enrichStory';
 import { runTheoryPipeline } from './handlers/theorySubmit';
+import { runBackfillPipeline } from './handlers/backfill';
 
 let boss: PgBoss | null = null;
 
@@ -35,6 +39,7 @@ export const startJobs = async (): Promise<void> => {
   await boss.createQueue(QUEUE_INGEST);
   await boss.createQueue(QUEUE_ENRICH);
   await boss.createQueue(QUEUE_THEORY);
+  await boss.createQueue(QUEUE_BACKFILL);
 
   await boss.work<IngestJobData>(QUEUE_INGEST, SERIAL, async ([job]: Job<IngestJobData>[]) => {
     const storyId = await runIngestPipeline(job.id, job.data);
@@ -54,8 +59,9 @@ export const startJobs = async (): Promise<void> => {
   );
 
   await boss.work<TheoryJobData>(QUEUE_THEORY, SERIAL, async ([job]) => runTheoryPipeline(job.data));
+  await boss.work<BackfillJobData>(QUEUE_BACKFILL, SERIAL, async ([job]) => runBackfillPipeline(job.id, job.data));
 
-  logger.info('Job queue started (ingest + enrich + theory workers registered)');
+  logger.info('Job queue started (ingest + enrich + theory + backfill workers registered)');
 };
 
 /** Graceful drain — let the in-flight job finish before the process exits. */
@@ -68,6 +74,12 @@ export const stopJobs = async (): Promise<void> => {
 export const enqueueTheory = async (data: TheoryJobData): Promise<string> => {
   const jobId = await requireBoss().send(QUEUE_THEORY, data, { retryLimit: 0 });
   if (!jobId) throw new Error('Failed to enqueue theory job');
+  return jobId;
+};
+
+export const enqueueBackfill = async (data: BackfillJobData): Promise<string> => {
+  const jobId = await requireBoss().send(QUEUE_BACKFILL, data, { retryLimit: 0 });
+  if (!jobId) throw new Error('Failed to enqueue backfill job');
   return jobId;
 };
 

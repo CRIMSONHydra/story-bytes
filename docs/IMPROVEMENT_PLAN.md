@@ -664,7 +664,15 @@ spoiler-RAG rewrite-to-scrubbed-paraphrase layer.
 cron, Batch-API. Gate any internet-fetching behind* **human checkpoint #8** *(Reddit Responsible-Builder ToS / ML-train
 ban; Fandom CC-BY-SA).*
 
-**M-Backfill — "Bring an existing story up to the current feature set"** · prereq: M14, M16, M10 · **(completeness)**
+**M-Backfill — "Bring an existing story up to the current feature set"** · prereq: M14, M16, M10 · **(completeness)** · ✅ **DONE**
+(pg-boss `backfill` job [jobs/handlers/backfill.ts] runs graph → foreshadow → appearance extraction in
+dependency order for a story, tracked via ingest_jobs + job_events [GET /api/jobs/:id]; `POST
+/api/admin/stories/:id/backfill` → 202; AdminPage "Backfill" button per story. `extract_appearance.py`
+[the M16-deferred appearance-fact LLM extractor; pure `parse_appearance_facts` validates type/boundary]
+populates entity_appearance_facts → real canon → real Cast portraits. Verified live: 23 seed characters
+→ 16 chapter-versioned appearance facts. Deferred: chapter_micro_summaries + RETRIEVAL_DOCUMENT re-embed
+fold in once the micro-summaries tier lands [M10]. Seed-dump SEED_DEMO reconciliation remains a human
+decision [§7].)
 One admin action / queued job type that runs the consolidated extraction + micro-summaries + `RETRIEVAL_DOCUMENT`
 re-embed **in dependency order** for an existing story (entities → appearance facts → states/relationships/events →
 micro-summaries → re-embed). Without this, the seed dump and any existing library show an empty Cast page, blank graph,
