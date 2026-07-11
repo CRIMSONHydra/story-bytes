@@ -14,7 +14,7 @@ story-bytes/
 │   │   ├── services/      # Business logic (rag, llm, db, search)
 │   │   ├── db/            # PostgreSQL connection pool
 │   │   ├── config/        # Environment validation (Zod) — loads .env from project root
-│   │   ├── __tests__/     # Vitest test suites (150 tests)
+│   │   ├── __tests__/     # Vitest test suites (152 tests)
 │   │   ├── app.ts         # Express app factory
 │   │   ├── routes.ts      # API route definitions
 │   │   └── server.ts      # Entry point with graceful shutdown
@@ -54,7 +54,7 @@ story-bytes/
   tiers; override `GEMINI_MAIN_MODEL=gemini-flash-latest` post-demo). Model IDs centralized in
   `backend/src/config/models.ts` + `ingestion/models.py`.
 - **Embeddings:** Gemini `gemini-embedding-2` (1536-dim MRL, in-prompt task instruction, auto-normalized)
-- **Testing:** Vitest 4 + Supertest (backend, 150 tests) · Vitest + React Testing Library + jsdom (frontend, 39 tests)
+- **Testing:** Vitest 4 + Supertest (backend, 152 tests) · Vitest + React Testing Library + jsdom (frontend, 41 tests)
 - **Linting:** ESLint 9 flat config + typescript-eslint + eslint-config-prettier (backend), react-hooks + react-refresh plugins (frontend)
 - **Styling:** Vanilla CSS only — **NO Tailwind CSS**
 - **Ingestion:** Python 3.12+ (psycopg2, google-genai, ebooklib, BeautifulSoup4, rarfile, pytesseract, Pillow)
@@ -80,7 +80,7 @@ pnpm build                 # Build backend + frontend
 pnpm lint                  # Lint backend + frontend
 
 # Test
-pnpm test                  # Run backend + frontend suites (pnpm -r): backend 150, frontend 39
+pnpm test                  # Run backend + frontend suites (pnpm -r): backend 152, frontend 41
 
 # Individual workspace commands
 pnpm --filter backend <script>

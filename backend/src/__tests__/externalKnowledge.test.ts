@@ -20,7 +20,9 @@ describe('findSimilarExternalKnowledge', () => {
     const [sql, params] = mockQuery.mock.calls[0];
     expect(String(sql)).toContain('ek.max_chapter_order IS NOT NULL');
     expect(String(sql)).toContain('ek.max_chapter_order <= $3');
-    expect(params).toEqual(['[0.1,0.2]', 'story-1', 7, 3]);
+    // The model tag is parameterized ($5), never string-interpolated into the SQL.
+    expect(String(sql)).toContain('ke.model = $5');
+    expect(params).toEqual(['[0.1,0.2]', 'story-1', 7, 3, expect.any(String)]);
   });
 
   it('returns [] (not a throw) when the DB errors', async () => {

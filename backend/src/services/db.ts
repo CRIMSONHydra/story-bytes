@@ -77,7 +77,7 @@ export const findSimilarBlocks = async (
       JOIN chapters c ON cb.chapter_id = c.chapter_id
       JOIN stories s ON c.story_id = s.story_id
       WHERE
-        be.model = '${EMBEDDING_MODEL_TAG}'
+        be.model = $6
         AND (
           (c.story_id = ANY($2::uuid[]) AND c.story_id != $3)
           OR (c.story_id = $3 AND ($4::int IS NULL OR c.chapter_order <= $4))
@@ -92,6 +92,7 @@ export const findSimilarBlocks = async (
         storyId,
         currentChapter !== undefined ? currentChapter : null,
         limit,
+        EMBEDDING_MODEL_TAG,
       ]);
       return result.rows;
     } catch (error) {
@@ -112,7 +113,7 @@ export const findSimilarBlocks = async (
     JOIN chapter_blocks cb ON be.block_id = cb.block_id
     JOIN chapters c ON cb.chapter_id = c.chapter_id
     WHERE
-      be.model = '${EMBEDDING_MODEL_TAG}'
+      be.model = $5
       AND ($2::uuid IS NULL OR c.story_id = $2)
       AND ($3::int IS NULL OR c.chapter_order <= $3)
     ORDER BY be.vector <=> $1 ASC
@@ -124,7 +125,8 @@ export const findSimilarBlocks = async (
       embeddingString,
       storyId || null,
       currentChapter !== undefined ? currentChapter : null,
-      limit
+      limit,
+      EMBEDDING_MODEL_TAG,
     ]);
     return result.rows;
   } catch (error) {
@@ -150,7 +152,7 @@ export const findSimilarExternalKnowledge = async (
       1 - (ke.vector <=> $1) as similarity
     FROM knowledge_embeddings ke
     JOIN external_knowledge ek ON ke.knowledge_id = ek.knowledge_id
-    WHERE ke.model = '${EMBEDDING_MODEL_TAG}'
+    WHERE ke.model = $5
       AND ek.story_id = $2
       AND ek.max_chapter_order IS NOT NULL
       AND ek.max_chapter_order <= $3
@@ -161,7 +163,7 @@ export const findSimilarExternalKnowledge = async (
   const embeddingString = `[${embedding.join(',')}]`;
 
   try {
-    const result = await pool.query(query, [embeddingString, storyId, boundary, limit]);
+    const result = await pool.query(query, [embeddingString, storyId, boundary, limit, EMBEDDING_MODEL_TAG]);
     return result.rows;
   } catch (error) {
     logger.error({ err: error }, 'Error finding similar external knowledge');
@@ -253,7 +255,7 @@ export const findRelevantImages = async (
     LEFT JOIN chapter_blocks cb ON cb.image_src = a.href
     LEFT JOIN chapters c ON cb.chapter_id = c.chapter_id
     WHERE
-      ae.model = '${EMBEDDING_MODEL_TAG}'
+      ae.model = $5
       AND ($2::uuid IS NULL OR a.story_id = $2)
       AND ($3::int IS NULL OR c.chapter_order IS NULL OR c.chapter_order <= $3)
     ORDER BY a.asset_id, ae.vector <=> $1 ASC
@@ -268,6 +270,7 @@ export const findRelevantImages = async (
       storyId || null,
       currentChapter !== undefined ? currentChapter : null,
       limit,
+      EMBEDDING_MODEL_TAG,
     ]);
     return result.rows;
   } catch (error) {

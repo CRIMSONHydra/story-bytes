@@ -204,7 +204,7 @@ single envelope: `{ error: { code, message, details?, requestId } }`.
 ### Running Tests
 
 ```bash
-pnpm test                                              # backend (150) + frontend (39) via pnpm -r
+pnpm test                                              # backend (152) + frontend (41) via pnpm -r
 uv run --project ingestion python -m pytest ingestion/tests/ -v   # Python tests
 pnpm lint                                              # Lint both packages (zero-warning policy)
 pnpm build                                             # Type-check + build both
