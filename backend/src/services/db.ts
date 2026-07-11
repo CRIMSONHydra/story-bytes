@@ -253,7 +253,7 @@ export const findRelevantImages = async (
     LEFT JOIN chapter_blocks cb ON cb.image_src = a.href
     LEFT JOIN chapters c ON cb.chapter_id = c.chapter_id
     WHERE
-      ae.model = 'gemini-embedding-001'
+      ae.model = '${EMBEDDING_MODEL_TAG}'
       AND ($2::uuid IS NULL OR a.story_id = $2)
       AND ($3::int IS NULL OR c.chapter_order IS NULL OR c.chapter_order <= $3)
     ORDER BY a.asset_id, ae.vector <=> $1 ASC

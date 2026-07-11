@@ -6,6 +6,7 @@
 import path from 'path';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import { MAIN_MODEL } from '../config/models';
 
 // Ensure .env is loaded from the parent directory (project root)
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
@@ -26,17 +27,17 @@ const verifyGeminiNewSdk = async () => {
   try {
     const ai = new GoogleGenAI({ apiKey: key });
 
-    console.log('   Trying gemini-2.5-flash...');
+    console.log(`   Trying ${MAIN_MODEL}...`);
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: MAIN_MODEL,
         contents: 'Say Hello',
       });
-      console.log(`   ✅ gemini-2.5-flash works! Response: ${response.text}`);
+      console.log(`   ✅ ${MAIN_MODEL} works! Response: ${response.text}`);
       return true;
     } catch (e: unknown) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
-      console.log(`   ⚠️ gemini-2.5-flash failed: ${errorMessage}`);
+      console.log(`   ⚠️ ${MAIN_MODEL} failed: ${errorMessage}`);
       if (errorMessage.includes('404')) {
         console.log('      (Model not found or not available in your region)');
       }

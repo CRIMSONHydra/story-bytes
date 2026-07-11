@@ -4,9 +4,9 @@
  * Kept in one place so a model swap is a one-line, env-overridable change — prompted by Google
  * retiring gemini-2.5-flash and gemini-2.5-flash-lite (both now 404). The `-latest` aliases track
  * the current flash / flash-lite tier and survive future retirements; override via env to pin an
- * explicit version. Embeddings stay on gemini-embedding-001 (still active); note that the DB
- * embedding TAG (block_embeddings.model, see EMBEDDING_MODEL_TAG in llm.ts) is a separate value that
- * must match stored vectors and is NOT this call-time model id.
+ * explicit version. Embeddings run on gemini-embedding-2; note that the DB embedding TAG
+ * (block_embeddings.model, see EMBEDDING_MODEL_TAG in llm.ts) is a separate value that must match
+ * stored vectors and is NOT this call-time model id.
  */
 
 /**
