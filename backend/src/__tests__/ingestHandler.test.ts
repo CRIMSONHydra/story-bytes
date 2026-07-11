@@ -36,7 +36,7 @@ describe('runIngestPipeline', () => {
   });
 
   it('rejects unsupported file types and marks the job failed', async () => {
-    await expect(runIngestPipeline('j2', { ...data, ext: '.txt' })).rejects.toThrow(/Unsupported/);
+    await expect(runIngestPipeline('j2', { ...data, ext: '.xyz' })).rejects.toThrow(/Unsupported/);
     expect(setIngestStatus).toHaveBeenCalledWith('j2', 'failed', expect.objectContaining({ error: expect.any(String) }));
   });
 

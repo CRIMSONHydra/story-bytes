@@ -9,6 +9,7 @@ import { getProjectRoot } from './assets';
 import { asyncHandler, badRequest, invalidId, notFound } from '../middleware/errors';
 import { enqueueIngest } from '../jobs/queue';
 import { createIngestJob, findReusableJobBySha } from '../jobs/progress';
+import { ALLOWED_EXTENSIONS } from '../middleware/upload';
 
 const uuidSchema = z.string().uuid();
 
@@ -38,7 +39,7 @@ export const handleAdminDeleteStory = asyncHandler(async (req: Request, res: Res
   res.status(204).send();
 });
 
-const ALLOWED_EXT = ['.epub', '.cbz', '.cbr'];
+const ALLOWED_EXT = ALLOWED_EXTENSIONS; // single source of truth (middleware/upload.ts)
 
 /**
  * M5: accept an upload, stage it durably, and ENQUEUE the ingest — returns 202 + jobId immediately
@@ -47,10 +48,10 @@ const ALLOWED_EXT = ['.epub', '.cbz', '.cbr'];
  */
 export const handleAdminIngest = asyncHandler(async (req: Request, res: Response) => {
   const file = req.file;
-  if (!file) throw badRequest('No file uploaded. Accepted: .epub, .cbz, .cbr');
+  if (!file) throw badRequest('No file uploaded. Accepted: .epub, .cbz, .cbr, .txt, .md, .pdf');
 
   const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
-  if (!ALLOWED_EXT.includes(ext)) throw badRequest(`Unsupported file type: ${ext}. Accepted: .epub, .cbz, .cbr`);
+  if (!ALLOWED_EXT.includes(ext)) throw badRequest(`Unsupported file type: ${ext}. Accepted: .epub, .cbz, .cbr, .txt, .md, .pdf`);
 
   const projectRoot = getProjectRoot();
   const fileName = basename(file.originalname);

@@ -513,7 +513,16 @@ seed stories with the `text:` document instruction (migrated to `gemini-embeddin
 *DONE+:* citation-validation tests; eval no-regression; seed dump regenerated. → **Human checkpoint #4** (approve
 re-embedding + regenerating `db/seed.dump`).
 
-**M10 — Retrieval quality ladder** · *RAG D7–D9* · prereq: M9
+**M10 — Retrieval quality ladder** · *RAG D7–D9* · prereq: M9 · ✅ **DONE (core)**
+(`rewrite.ts`: one Flash-Lite call → standalone query + sub-queries + entity mentions + intent, replacing
+the substring `detectSummaryIntent`/`detectForeshadowingIntent` hacks, fail-open; `fusion.ts` RRF +
+configurable similarity floor, replacing the `*0.3` score fudge; `contextBuilder.ts` budgeted labeled
+assembly (citations index the budget-trimmed set, so a dropped block can't be cited); `history` in the
+chat contract → follow-up pronoun resolution. **Deferred** (additive, noted): `chapter_micro_summaries`
+retrieval tier, ±1 neighbor expansion, reranker flag — Recap already ships on `chapter_summaries`.
+120 backend tests; eval 0-leak held.)
+
+Original scope:
 `rewrite.ts` (one Flash-Lite call: standalone query + ≤3 sub-queries + entity mentions + intent — replaces the
 substring intent hacks); `fusion.ts` RRF (replaces `*0.3`) + similarity floor; `chapter_micro_summaries` populating the
 empty `chapter_embeddings` (the summary retrieval tier); `contextBuilder.ts` budgeted assembly + ±1 neighbor expansion;
@@ -542,7 +551,17 @@ Diff `content_hash` computed **after** the loader chunking from M9.
 Ingest pipeline runs inside pg-boss handlers (series re-enrich = N queued jobs, not an inline loop); optional SSE
 progress on `job_events`; `UploadPanel`/`JobsPanel` with live stage/progress, cancel, survives navigation.
 
-**M13 — Chapter management + append/paste + formats + cost** · *Ingestion C7–C11* · prereq: M12, M6
+**M13 — Chapter management + append/paste + formats + cost** · *Ingestion C7–C11* · prereq: M12, M6 · ✅ **DONE**
+(`services/chapters.ts` + `chapterAdmin` controller: rename / front-matter toggle / delete (+annotation
+count) / reorder (two-phase to dodge the unique order constraint) / **paste-append** (chunks + embeds
+only the new chapter via a TS mirror of `split_into_chunks`, invalidates `chapter_summaries`) + a
+read-time **cost estimate** from `pricing.ts`. `extract_text.py` (.txt/.md, `--single-chapter`) +
+`extract_pdf.py` (pdfplumber, MIT) wired into the ingest job + upload filter (ALLOWED_EXT +.txt/.md/.pdf).
+`ChapterManager.tsx` (rename / toggle / delete-with-count / up-down reorder / paste-append + estimate),
+linked from Admin. Verified live: appending 1 chapter embedded only its block (global usage delta +1,
+chapters 1–2 not re-embedded). Backend 128 / FE 33 / Python 182 tests. drag-reorder → up/down buttons.)
+
+Original scope:
 `ChapterManager.tsx` (rename, front-matter toggle, delete-with-annotation-count, drag reorder → invalidate
 `chapter_summaries` + `chapter_micro_summaries`); `POST /api/stories/:id/chapters` paste/append via
 `extract_text.py --single-chapter`; `extract_text.py` (.txt/.md) + `extract_pdf.py` (pdfplumber, MIT — not AGPL

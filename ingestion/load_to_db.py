@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import logging
 import math
@@ -167,6 +168,40 @@ def generate_embeddings_batch(client: genai.Client, texts: List[str]) -> List[Li
     return [e.values for e in response.embeddings]
 
 
+def chapter_content_hash(chapter: Dict[str, Any]) -> str:
+    """Stable content hash of a source chapter (M11). Any change to title/text/blocks changes it,
+    so a re-ingest can skip unchanged chapters (no re-embed → $0). Chunking is deterministic, so
+    hashing the raw source is equivalent to hashing the post-chunk blocks for change detection."""
+    blocks = chapter.get("content", [])
+    payload = json.dumps(
+        {
+            "title": chapter.get("title"),
+            "text": chapter.get("text"),
+            "blocks": [{"type": b.get("type"), "text": b.get("text"), "src": b.get("src")} for b in blocks],
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def decide_chapter_action(existing_hash: Optional[str], new_hash: str, mode: str) -> str:
+    """Return 'skip' or 'write' for one chapter given the ingest mode (M11).
+
+    - replace: always write (full re-ingest).
+    - append:  write only chapters not already present (by order); never touch existing.
+    - diff:    write new chapters and changed chapters; skip unchanged (hash match).
+    """
+    if mode == "replace":
+        return "write"
+    if mode == "append":
+        return "write" if existing_hash is None else "skip"
+    # diff
+    if existing_hash is None:
+        return "write"
+    return "skip" if existing_hash == new_hash else "write"
+
+
 IMAGE_TAG_PROMPT = """Analyze this image from a story/comic and return a JSON object with:
 - "description": A concise visual description (1-2 sentences)
 - "characters_visual": Array of character visual descriptions (e.g. "red-haired girl", "tall bearded man")
@@ -280,50 +315,32 @@ def split_into_chunks(text: str, max_chars: int = 1600, target_chars: int = 1200
     return chunks
 
 
-def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], client: genai.Client | None, tag_images: bool = False):
-    """Insert chapters and blocks, generating embeddings via Gemini API."""
-    chapter_count = len(chapters)
-    total_blocks = sum(len(ch.get("content", [])) for ch in chapters)
-    total_images = sum(1 for ch in chapters for b in ch.get("content", []) if b.get("type") == "image")
-    logging.info(f"Processing {chapter_count} chapters ({total_blocks} blocks, {total_images} images)...")
+def _write_chapter(cursor, story_id: str, chapter: Dict[str, Any], content_hash: str,
+                   tag_images: bool, client: genai.Client | None,
+                   pending_embeddings: List[Dict[str, Any]], pending_image_tags: List[Dict[str, Any]]) -> None:
+    """Insert one chapter + its blocks, collecting embedding/image-tag work (M11 unit of work)."""
+    cursor.execute(
+        """
+        INSERT INTO chapters (story_id, chapter_order, title, aggregated_text, raw_html, metadata,
+                              content_hash, is_front_matter)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING chapter_id
+        """,
+        (
+            story_id,
+            chapter.get("order"),
+            chapter.get("title"),
+            chapter.get("text"),
+            Json(chapter.get("raw_html", [])),
+            Json({}),
+            content_hash,
+            bool(chapter.get("is_front_matter", False)),
+        ),
+    )
+    chapter_id = cursor.fetchone()[0]
 
-    ingest_start = time.time()
-
-    # Clear existing chapters for this story to avoid duplicates/conflicts on re-run
-    cursor.execute("SELECT count(*) FROM chapters WHERE story_id = %s", (story_id,))
-    existing_count = cursor.fetchone()[0]
-    if existing_count > 0:
-        logging.warning(f"Deleting {existing_count} existing chapters (and their embeddings/progress) for re-ingestion")
-    cursor.execute("DELETE FROM chapters WHERE story_id = %s", (story_id,))
-
-    # Collect all text blocks first, insert chapters/blocks, then batch-embed
-    pending_embeddings: List[Dict[str, Any]] = []
-    pending_image_tags: List[Dict[str, Any]] = []
-
-    for ch_idx, chapter in enumerate(chapters):
-        blocks = chapter.get("content", [])
-        ch_images = sum(1 for b in blocks if b.get("type") == "image")
-        logging.info(f"  [{ch_idx + 1}/{chapter_count}] Chapter \"{chapter.get('title', 'Untitled')}\" ({len(blocks)} blocks, {ch_images} images)")
-
-        cursor.execute(
-            """
-            INSERT INTO chapters (story_id, chapter_order, title, aggregated_text, raw_html, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING chapter_id
-            """,
-            (
-                story_id,
-                chapter.get("order"),
-                chapter.get("title"),
-                chapter.get("text"),
-                Json(chapter.get("raw_html", [])),
-                Json({})
-            )
-        )
-        chapter_id = cursor.fetchone()[0]
-
-        block_index = 0
-        for block in blocks:
+    block_index = 0
+    for block in chapter.get("content", []):
             block_type = block.get("type")
             image_src = block.get("src")
             image_alt = block.get("alt")
@@ -367,6 +384,49 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
                         "story_id": story_id,
                     })
 
+
+def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], client: genai.Client | None,
+                    tag_images: bool = False, mode: str = "replace") -> Dict[str, int]:
+    """Insert chapters + blocks + embeddings. `mode` (M11): replace | append | diff. Unchanged
+    chapters in diff mode are skipped (no re-embed). Returns {'written', 'skipped'} chapter counts."""
+    chapter_count = len(chapters)
+    total_blocks = sum(len(ch.get("content", [])) for ch in chapters)
+    total_images = sum(1 for ch in chapters for b in ch.get("content", []) if b.get("type") == "image")
+    logging.info(f"Processing {chapter_count} chapters ({total_blocks} blocks, {total_images} images), mode={mode}...")
+
+    ingest_start = time.time()
+
+    # Existing chapters by order → (chapter_id, content_hash) for diff/append + changed-chapter replace.
+    cursor.execute("SELECT chapter_order, chapter_id, content_hash FROM chapters WHERE story_id = %s", (story_id,))
+    existing = {row[0]: (row[1], row[2]) for row in cursor.fetchall()}
+
+    if mode == "replace" and existing:
+        logging.warning(f"replace mode: deleting {len(existing)} existing chapters (and their embeddings/progress)")
+        cursor.execute("DELETE FROM chapters WHERE story_id = %s", (story_id,))
+        existing = {}
+
+    pending_embeddings: List[Dict[str, Any]] = []
+    pending_image_tags: List[Dict[str, Any]] = []
+    chapters_written = 0
+    chapters_skipped = 0
+
+    for ch_idx, chapter in enumerate(chapters):
+        order = chapter.get("order")
+        new_hash = chapter_content_hash(chapter)
+        existing_hash = existing[order][1] if order in existing else None
+        if decide_chapter_action(existing_hash, new_hash, mode) == "skip":
+            chapters_skipped += 1
+            continue
+        # Changed chapter (diff mode) → drop the old one (cascade clears its blocks/embeddings) first.
+        if order in existing:
+            cursor.execute("DELETE FROM chapters WHERE chapter_id = %s", (existing[order][0],))
+        logging.info(f"  [{ch_idx + 1}/{chapter_count}] writing chapter order={order} \"{chapter.get('title', 'Untitled')}\"")
+        _write_chapter(cursor, story_id, chapter, new_hash, tag_images, client, pending_embeddings, pending_image_tags)
+        chapters_written += 1
+
+    result_counts = {"written": chapters_written, "skipped": chapters_skipped}
+    logging.info(f"Chapters: {chapters_written} written, {chapters_skipped} skipped (mode={mode})")
+
     insert_elapsed = time.time() - ingest_start
     logging.info(f"Chapter/block insertion complete ({_format_duration(insert_elapsed)})")
 
@@ -397,7 +457,7 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
         logging.warning("No Gemini client — skipping embedding generation")
         total_elapsed = time.time() - ingest_start
         logging.info(f"Ingestion complete in {_format_duration(total_elapsed)} (no embeddings)")
-        return
+        return result_counts
 
     total = len(pending_embeddings)
     num_batches = math.ceil(total / EMBEDDING_BATCH_SIZE)
@@ -464,6 +524,9 @@ def insert_chapters(cursor, story_id: str, chapters: List[Dict[str, Any]], clien
         except Exception as e:  # noqa: BLE001 - accounting must never fail ingestion
             logging.warning(f"Could not record embedding usage: {e}")
 
+    return result_counts
+
+
 def _resolve_image_path(image_src: str) -> Optional[Path]:
     """Attempt to resolve an image source path to a local file."""
     candidates = [
@@ -508,6 +571,13 @@ def main():
         "--series-title",
         default="",
         help="Override auto-detected series title for grouping volumes.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["replace", "append", "diff"],
+        default="replace",
+        help="Ingest mode (M11): replace (full re-ingest), append (only new chapters), "
+             "diff (skip unchanged chapters — no re-embed).",
     )
     args = parser.parse_args()
 
@@ -554,11 +624,13 @@ def main():
                         break
 
                 story_id = insert_story(cursor, data, content_type, epub_path=epub_path, series_title_override=args.series_title)
-                insert_chapters(cursor, story_id, chapters, client, tag_images=args.tag_images)
+                counts = insert_chapters(cursor, story_id, chapters, client, tag_images=args.tag_images, mode=args.mode)
         logging.info("Successfully loaded story into database.")
         # Terminal result event on STDOUT — the backend reads story_id from this, not from log text.
         emit_event("result", status="ok", story_id=str(story_id), title=data.get("title", "Unknown"),
-                   content_type=content_type, chapters=len(chapters), blocks=total_blocks)
+                   content_type=content_type, chapters=len(chapters), blocks=total_blocks,
+                   mode=args.mode, chapters_written=counts.get("written", 0),
+                   chapters_skipped=counts.get("skipped", 0))
     finally:
         conn.close()
 
