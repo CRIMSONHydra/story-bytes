@@ -10,9 +10,10 @@ import type { Job } from 'pg-boss';
 
 import { env } from '../config/env';
 import { logger } from '../services/logger';
-import { QUEUE_INGEST, QUEUE_ENRICH, type IngestJobData, type EnrichJobData } from './types';
+import { QUEUE_INGEST, QUEUE_ENRICH, QUEUE_THEORY, type IngestJobData, type EnrichJobData, type TheoryJobData } from './types';
 import { runIngestPipeline } from './handlers/ingest';
 import { runEnrichPipeline } from './handlers/enrichStory';
+import { runTheoryPipeline } from './handlers/theorySubmit';
 
 let boss: PgBoss | null = null;
 
@@ -33,6 +34,7 @@ export const startJobs = async (): Promise<void> => {
   await boss.start();
   await boss.createQueue(QUEUE_INGEST);
   await boss.createQueue(QUEUE_ENRICH);
+  await boss.createQueue(QUEUE_THEORY);
 
   await boss.work<IngestJobData>(QUEUE_INGEST, SERIAL, async ([job]: Job<IngestJobData>[]) => {
     const storyId = await runIngestPipeline(job.id, job.data);
@@ -51,7 +53,9 @@ export const startJobs = async (): Promise<void> => {
     QUEUE_ENRICH, SERIAL, async ([job]) => runEnrichPipeline(job.data),
   );
 
-  logger.info('Job queue started (ingest + enrich workers registered)');
+  await boss.work<TheoryJobData>(QUEUE_THEORY, SERIAL, async ([job]) => runTheoryPipeline(job.data));
+
+  logger.info('Job queue started (ingest + enrich + theory workers registered)');
 };
 
 /** Graceful drain — let the in-flight job finish before the process exits. */
@@ -59,6 +63,12 @@ export const stopJobs = async (): Promise<void> => {
   if (!boss) return;
   await boss.stop({ graceful: true });
   boss = null;
+};
+
+export const enqueueTheory = async (data: TheoryJobData): Promise<string> => {
+  const jobId = await requireBoss().send(QUEUE_THEORY, data, { retryLimit: 0 });
+  if (!jobId) throw new Error('Failed to enqueue theory job');
+  return jobId;
 };
 
 export const enqueueIngest = async (data: IngestJobData): Promise<string> => {

@@ -21,6 +21,7 @@ import {
   handleReorderChapters, handleAppendChapter, handleEstimateAppend,
 } from './controllers/chapterAdmin';
 import { handleGetCast, handleGenerateEntityImage, handleServeGeneratedImage } from './controllers/images';
+import { handleSubmitTheory, handleGetSubmission, handleListSubmissions } from './controllers/theories';
 import { upload } from './middleware/upload';
 import { adminAuth } from './middleware/adminAuth';
 import { chatLimiter, ingestLimiter } from './middleware/rateLimits';
@@ -47,6 +48,11 @@ router.delete('/chapters/:chapterId', adminAuth, handleDeleteChapter);
 
 // Chat (RAG) — rate-limited (each call fans out to embedding + model inference)
 router.post('/chat', chatLimiter, handleChat);
+
+// Fan-theory submissions (M19) — paste → async classify (spoiler-scoped) → 202 + poll
+router.post('/stories/:storyId/theories', handleSubmitTheory);
+router.get('/stories/:storyId/theories', handleListSubmissions);
+router.get('/theories/:submissionId', handleGetSubmission);
 
 // Summarization (Phase 4)
 router.post('/stories/:storyId/summarize', handleSummarize);

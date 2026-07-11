@@ -1,0 +1,73 @@
+.theory-submit {
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.theory-submit h4 {
+  margin: 0 0 0.25rem;
+}
+
+.theory-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted, #888);
+  margin: 0 0 0.5rem;
+}
+
+.theory-submit textarea,
+.theory-submit input {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border, #444);
+  border-radius: 6px;
+  background: var(--surface, #1e1e24);
+  color: inherit;
+  font: inherit;
+}
+
+.theory-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.theory-actions button {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--border, #444);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.theory-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.theory-status {
+  font-size: 0.85rem;
+  color: var(--text-muted, #999);
+}
+
+/* External-source pills rendered under a theory-mode answer. */
+.external-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.external-pill {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-hover, #2a2a33);
+  border: 1px solid var(--border, #444);
+  color: inherit;
+  text-decoration: none;
+}

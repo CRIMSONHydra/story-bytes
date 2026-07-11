@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { TheorySubmit } from './TheorySubmit';
 
 interface ChatInterfaceProps {
   storyId?: string;
@@ -26,11 +27,17 @@ interface ChatImage {
   storyId?: string;
 }
 
+interface ExternalSource {
+  content: string;
+  sourceUrl: string | null;
+}
+
 interface Message {
   role: 'user' | 'ai';
   content: string;
   sources?: ChatSource[];
   images?: ChatImage[];
+  externalSources?: ExternalSource[];
   confidence?: Confidence;
   insufficientContext?: boolean;
   traceId?: string;
@@ -122,6 +129,7 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
         content: data.answer,
         sources: data.sources,
         images: data.images,
+        externalSources: data.externalSources,
         confidence: data.confidence,
         insufficientContext: data.insufficientContext,
         traceId: data.traceId,
@@ -243,6 +251,20 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
                 </div>
               )}
 
+              {/* External sources (theory mode) — reader-submitted, spoiler-scoped [E#] pills */}
+              {msg.externalSources && msg.externalSources.length > 0 && (
+                <div className="external-pills">
+                  {msg.externalSources.map((ext, i) =>
+                    ext.sourceUrl ? (
+                      <a key={i} className="external-pill" href={ext.sourceUrl} target="_blank" rel="noreferrer"
+                         title={ext.content}>[E{i + 1}] source</a>
+                    ) : (
+                      <span key={i} className="external-pill" title={ext.content}>[E{i + 1}] fan theory</span>
+                    ),
+                  )}
+                </div>
+              )}
+
               {/* Image gallery */}
               {msg.images && msg.images.length > 0 && (
                 <div className="chat-images">
@@ -276,6 +298,9 @@ export default function ChatInterface({ storyId, currentChapter, totalChapters }
         {loading && <div className="message ai"><div className="bubble typing">Thinking...</div></div>}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Theory mode: let the reader contribute a fan theory (classified spoiler-safe, M19). */}
+      {mode === 'theory' && spoilerStoryId && <TheorySubmit storyId={spoilerStoryId} />}
 
       <form onSubmit={sendMessage} className="chat-input">
         <input

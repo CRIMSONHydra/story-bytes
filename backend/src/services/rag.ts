@@ -86,10 +86,16 @@ export interface ChatImage {
   storyId?: string;
 }
 
+export interface ExternalSource {
+  content: string;
+  sourceUrl: string | null;
+}
+
 export interface ChatResponse {
   answer: string;
   sources: ChatSource[];
   images: ChatImage[];
+  externalSources?: ExternalSource[];
   confidence: Confidence;
   insufficientContext: boolean;
   traceId: string;
@@ -279,18 +285,19 @@ export const answerQuery = async (
     ]);
 
     let externalContext = '';
+    const externalSources: ExternalSource[] = [];
 
-    // Step 4: External knowledge — classified sources only.
-    // Improvement Plan §3.6 (interim safety): live web-search (Google CSE) snippets are NO LONGER
-    // injected into the prompt, and the old "store the raw search result as knowledge" write path is
-    // removed. Raw, unclassified web results are the top spoiler-leak vector — for a popular series a
-    // search for "who is X" returns "X is the main antagonist" straight into the answer. Until the
-    // Theories pillar (M18) adds spoiler-classification of external content, theory mode uses only
-    // already-classified external_knowledge rows plus the reader's own (chapter-bounded) story context.
+    // Step 4: External knowledge — classified, spoiler-scoped sources only (M18).
+    // Live web-search (Google CSE) snippets are NEVER injected — raw web results are the top
+    // spoiler-leak vector. Only already-classified external_knowledge rows whose max_chapter_order is
+    // at or below the boundary are eligible (default-deny; see findSimilarExternalKnowledge). Each is
+    // labeled [E1]..[En] so the model can attribute a theory to a specific submitted source.
     if (requiresExternalKnowledge(query, effectiveMode) && storyId) {
       const knownFacts = await findSimilarExternalKnowledge(embedding, storyId, boundary ?? 0);
       if (knownFacts.length > 0) {
-        externalContext += '\n\nExisting Knowledge:\n' + knownFacts.map(k => `- ${k.content}`).join('\n');
+        externalContext += '\n\nEXTERNAL KNOWLEDGE (reader-submitted, spoiler-safe — attribute as [E#]):\n'
+          + knownFacts.map((k, i) => `[E${i + 1}] ${k.content}`).join('\n');
+        for (const k of knownFacts) externalSources.push({ content: k.content, sourceUrl: k.source_url ?? null });
       }
     }
 
@@ -424,7 +431,10 @@ Respond as STRICT JSON (no markdown fences):
       query, answer, confidence, sourceCount: sources.length, insufficientContext,
     }).catch(err => logger.error({ err }, 'saveRagTrace failed (non-fatal)'));
 
-    return { answer, sources, images, confidence, insufficientContext, traceId };
+    return {
+      answer, sources, images, confidence, insufficientContext, traceId,
+      ...(externalSources.length > 0 ? { externalSources } : {}),
+    };
   } catch (error) {
     // Hard pipeline failure: log and rethrow so the controller returns 502 (monitoring-visible),
     // instead of masking an outage as a 200 "apology". Insufficient-context is NOT an error — that

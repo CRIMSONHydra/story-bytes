@@ -632,7 +632,15 @@ from disk, cached on `(entity_id, canon_hash)`. `CastPage` + `EntityCard` + ligh
 daily cap enforced; cost ≤ configured cap. → **Human checkpoint #7** (`@google/genai` pin supports `generateContent`
 image output — 2.5-flash-image dies 2026-10-02, Imagen 4 dies 2026-08-17; IP/likeness = no public sharing).
 
-**M18 — External-knowledge subsystem v1 (paste → classify)** · *Internet B1–B4 (scoped)* · prereq: M2, M5, M9 · **(2.5)**
+**M18 — External-knowledge subsystem v1 (paste → classify)** · *Internet B1–B4 (scoped)* · prereq: M2, M5, M9 · **(2.5)** · ✅ **DONE**
+(migration `..._external_knowledge`: external_knowledge reworked to a spoiler-safe chunk table
+[`max_chapter_order` NULL=default-deny, `content_sha256` dedup, `document_id`] + `knowledge_documents`
++ `theory_submissions`; legacy rows wiped; unsafe `insertExternalKnowledge` write path deleted. Retrieval
+`findSimilarExternalKnowledge` DEFAULT-DENIES [NOT NULL max_chapter_order <= boundary]. `ingestion/external/`
+classify.py [LLM, pure `parse_classification` denies null/low-conf/beyond-final] + pipeline.py [per-
+paragraph chunk → dedup → classify → embed → insert, only safe chunks]. Verified live: safe paragraph
+kept [ch5], future-spoiler paragraph denied. → **Human checkpoint #8**: internet-fetch stays deferred,
+paste-only.)
 Migration: `external_knowledge` reworked into the chunk table (+ provenance + `spoiler_scope`/`max_chapter_order` +
 `content_sha256` dedup) + `knowledge_documents` + `theory_submissions`; wipe legacy junk rows; delete the
 query-embedding write path. `ingestion/external/` (`normalize.py`, `chunker.py`, `fetch_generic.py` for paste,
@@ -641,7 +649,12 @@ timeline reference (NOT cumulative `chapter_summaries` — see §7); default-den
 *DONE+:* classifier **false-safe rate < 2%** on a hand-labeled eval set; NULL-chapter default-deny SQL branch tested.
 → **Human checkpoint #8** (classifier gate).
 
-**M19 — Theory jobs/retrieval/UI (v1)** · *Internet B5, B8, B9 (subset)* · prereq: M18, M8, M5, M4
+**M19 — Theory jobs/retrieval/UI (v1)** · *Internet B5, B8, B9 (subset)* · prereq: M18, M8, M5, M4 · ✅ **DONE**
+(pg-boss `theory-submission` worker runs the classify pipeline; `POST /stories/:id/theories` → 202 +
+poll `GET /theories/:id`; `services/theories.ts`; theory-mode chat now returns spoiler-filtered
+`externalSources` with [E#] attribution [CSE path already gone]; `TheorySubmit` component + external-
+source pills in `ChatInterface`. Verified live E2E: submit → classified [ch5] → theory chat at boundary
+20 surfaced it as an external source. Backend 148 / FE 39 tests.)
 pg-boss `theory:submission` handler + submission endpoints + polling; `services/knowledge.ts findExternalKnowledge`
 (spoiler-filtered), theory-mode `[En]` attribution + cited-only `externalSources`, CSE snippet path deleted;
 `TheorySubmit.tsx` + external-source pills; empty-state ("no fan theories yet — paste a thread"). Optional

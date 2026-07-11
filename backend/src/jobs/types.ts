@@ -4,6 +4,16 @@
 
 export const QUEUE_INGEST = 'ingest';
 export const QUEUE_ENRICH = 'enrich-story';
+export const QUEUE_THEORY = 'theory-submission';
+
+/** Payload for a theory-submission job (M19). The pasted text is staged to `filePath`. */
+export interface TheoryJobData {
+  submissionId: string;
+  storyId: string;
+  filePath: string;
+  sourceUrl?: string;
+  userId?: string;
+}
 
 export type JobStatus = 'queued' | 'active' | 'completed' | 'failed' | 'cancelled';
 
