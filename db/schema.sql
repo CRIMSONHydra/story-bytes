@@ -481,3 +481,32 @@ CREATE TABLE IF NOT EXISTS llm_usage (
 );
 CREATE INDEX IF NOT EXISTS idx_llm_usage_created ON llm_usage (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_llm_usage_model ON llm_usage (model);
+
+-- ---------------------------------------------------------------------------
+-- Image entities / canon + generated images (migration 1700000000009, M16)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS entity_appearance_facts (
+    fact_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    entity_id      UUID NOT NULL REFERENCES kg_entities(entity_id) ON DELETE CASCADE,
+    chapter_order  INT NOT NULL,
+    fact_type      TEXT NOT NULL,
+    value          TEXT NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (entity_id, chapter_order, fact_type)
+);
+CREATE INDEX IF NOT EXISTS idx_appearance_entity_chapter
+    ON entity_appearance_facts (entity_id, chapter_order);
+
+CREATE TABLE IF NOT EXISTS generated_images (
+    image_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    entity_id    UUID NOT NULL REFERENCES kg_entities(entity_id) ON DELETE CASCADE,
+    canon_hash   TEXT NOT NULL,
+    file_path    TEXT,
+    prompt       TEXT NOT NULL,
+    model        TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'blocked', 'failed')),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (entity_id, canon_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_generated_images_entity ON generated_images (entity_id);
