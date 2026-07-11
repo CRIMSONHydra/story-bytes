@@ -288,7 +288,7 @@ export const answerQuery = async (
     // Theories pillar (M18) adds spoiler-classification of external content, theory mode uses only
     // already-classified external_knowledge rows plus the reader's own (chapter-bounded) story context.
     if (requiresExternalKnowledge(query, effectiveMode) && storyId) {
-      const knownFacts = await findSimilarExternalKnowledge(embedding, storyId);
+      const knownFacts = await findSimilarExternalKnowledge(embedding, storyId, boundary ?? 0);
       if (knownFacts.length > 0) {
         externalContext += '\n\nExisting Knowledge:\n' + knownFacts.map(k => `- ${k.content}`).join('\n');
       }

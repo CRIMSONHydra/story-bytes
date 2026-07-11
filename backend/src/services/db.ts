@@ -135,11 +135,14 @@ export const findSimilarBlocks = async (
 
 export const findSimilarExternalKnowledge = async (
   embedding: number[],
-  storyId?: string,
+  storyId: string,
+  boundary: number,
   limit = 3
 ): Promise<ExternalKnowledge[]> => {
+  // Spoiler-safe (M18): DEFAULT-DENY. Only chunks classified with a concrete max_chapter_order at or
+  // below the reader's boundary are eligible; NULL (unclassified/unsafe) chunks are NEVER returned.
   const query = `
-    SELECT 
+    SELECT
       ek.knowledge_id,
       ek.content,
       ek.source_url,
@@ -147,21 +150,18 @@ export const findSimilarExternalKnowledge = async (
       1 - (ke.vector <=> $1) as similarity
     FROM knowledge_embeddings ke
     JOIN external_knowledge ek ON ke.knowledge_id = ek.knowledge_id
-    WHERE 
-      ke.model = 'gemini-embedding-001'
-      AND ($2::uuid IS NULL OR ek.story_id = $2)
+    WHERE ke.model = '${EMBEDDING_MODEL_TAG}'
+      AND ek.story_id = $2
+      AND ek.max_chapter_order IS NOT NULL
+      AND ek.max_chapter_order <= $3
     ORDER BY ke.vector <=> $1 ASC
-    LIMIT $3;
+    LIMIT $4;
   `;
 
   const embeddingString = `[${embedding.join(',')}]`;
 
   try {
-    const result = await pool.query(query, [
-      embeddingString,
-      storyId || null,
-      limit
-    ]);
+    const result = await pool.query(query, [embeddingString, storyId, boundary, limit]);
     return result.rows;
   } catch (error) {
     logger.error({ err: error }, 'Error finding similar external knowledge');
@@ -169,44 +169,9 @@ export const findSimilarExternalKnowledge = async (
   }
 };
 
-export const insertExternalKnowledge = async (
-  storyId: string,
-  content: string,
-  sourceUrl: string,
-  type: 'fact' | 'theory' | 'speculation',
-  embedding: number[]
-): Promise<void> => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const insertKnowledgeQuery = `
-      INSERT INTO external_knowledge (story_id, content, source_url, knowledge_type)
-      VALUES ($1, $2, $3, $4)
-      RETURNING knowledge_id;
-    `;
-    const knowledgeRes = await client.query(insertKnowledgeQuery, [storyId, content, sourceUrl, type]);
-    if (!knowledgeRes.rows[0]) {
-      throw new Error('Failed to insert external knowledge: no row returned');
-    }
-    const knowledgeId = knowledgeRes.rows[0].knowledge_id;
-
-    const embeddingString = `[${embedding.join(',')}]`;
-    const insertEmbeddingQuery = `
-      INSERT INTO knowledge_embeddings (knowledge_id, model, dimensions, vector)
-      VALUES ($1, 'gemini-embedding-001', 768, $2);
-    `;
-    await client.query(insertEmbeddingQuery, [knowledgeId, embeddingString]);
-
-    await client.query('COMMIT');
-  } catch (error) {
-    await client.query('ROLLBACK');
-    logger.error({ err: error }, 'Error inserting external knowledge');
-    throw error;
-  } finally {
-    client.release();
-  }
-};
+// (M18) The unsafe legacy write path `insertExternalKnowledge` was removed: it wrote chunks with no
+// spoiler scope (NULL max_chapter_order) under a stale embedding tag. External knowledge is now
+// written only by the classify pipeline (ingestion/external), which assigns a max_chapter_order.
 
 export const getAllStories = async () => {
   const result = await pool.query('SELECT * FROM stories ORDER BY created_at DESC');
