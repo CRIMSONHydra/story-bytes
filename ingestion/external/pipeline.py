@@ -118,10 +118,13 @@ def main() -> None:
     ap.add_argument("--submission-id", default=None)
     args = ap.parse_args()
 
-    text = args.file.read_text(encoding="utf-8", errors="replace")
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-    conn = _db()
+    # Init INSIDE the try: if read_text / genai.Client / _db fails, we still emit an error result and
+    # mark the submission failed (when the DB is reachable) instead of leaving it stuck in 'queued'.
+    conn = None
     try:
+        text = args.file.read_text(encoding="utf-8", errors="replace")
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        conn = _db()
         if args.submission_id:
             with conn.cursor() as cur:
                 cur.execute("UPDATE theory_submissions SET status='active', updated_at=NOW() WHERE submission_id=%s",
@@ -138,16 +141,26 @@ def main() -> None:
             conn.commit()
         emit("result", status="ok", **result)
     except Exception as e:  # noqa: BLE001
-        conn.rollback()
+        if conn is not None:
+            conn.rollback()
+        # Best-effort failure record — the backend job also has a failSubmission fallback if the DB
+        # itself is unreachable here.
         if args.submission_id:
-            with conn.cursor() as cur:
-                cur.execute("UPDATE theory_submissions SET status='failed', error=%s, updated_at=NOW() WHERE submission_id=%s",
-                            (str(e)[:500], args.submission_id))
-            conn.commit()
+            try:
+                mark_conn = conn or _db()
+                with mark_conn.cursor() as cur:
+                    cur.execute("UPDATE theory_submissions SET status='failed', error=%s, updated_at=NOW() WHERE submission_id=%s",
+                                (str(e)[:500], args.submission_id))
+                mark_conn.commit()
+                if conn is None:
+                    mark_conn.close()
+            except Exception as mark_err:  # noqa: BLE001
+                logging.error(f"Could not mark submission failed: {mark_err}")
         emit("result", status="error", error=str(e)[:500])
         raise
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 if __name__ == "__main__":

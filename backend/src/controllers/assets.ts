@@ -5,15 +5,10 @@ import { join, extname, resolve } from 'path';
 import { asyncHandler, badRequest, notFound } from '../middleware/errors';
 import { extractImageFromArchive } from '../services/archiveImages';
 
-/**
- * Resolve the project root directory.
- * In Docker (NODE_ENV=production), cwd is /app (the project root).
- * In dev, cwd is backend/, so go up one level.
- */
-export function getProjectRoot(): string {
-  if (process.env.NODE_ENV === 'production') return process.cwd();
-  return resolve(process.cwd(), '..');
-}
+// getProjectRoot now lives in services/paths.ts (services must not depend on controllers). Import it
+// for local use and re-export for any external caller that still imports it from here.
+import { getProjectRoot } from '../services/paths';
+export { getProjectRoot };
 
 const MIME_MAP: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',

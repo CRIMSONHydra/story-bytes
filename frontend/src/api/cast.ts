@@ -23,7 +23,7 @@ export interface GenerateResult {
 export const listCast = (storyId: string, upToChapter: number, signal?: AbortSignal): Promise<{ cast: CastMember[] }> =>
   apiGet(`/api/stories/${storyId}/cast?upToChapter=${upToChapter}`, signal);
 
-export const generateEntityImage = (storyId: string, entityId: string, upToChapter: number, force = false): Promise<GenerateResult> =>
-  apiPost(`/api/stories/${storyId}/entities/${entityId}/image?upToChapter=${upToChapter}${force ? '&force=1' : ''}`);
+export const generateEntityImage = (storyId: string, entityId: string, upToChapter: number, force = false, signal?: AbortSignal): Promise<GenerateResult> =>
+  apiPost(`/api/stories/${storyId}/entities/${entityId}/image?upToChapter=${upToChapter}${force ? '&force=1' : ''}`, undefined, signal);
 
 export const generatedImageUrl = (imageId: string): string => `${API_BASE}/api/generated-images/${imageId}`;

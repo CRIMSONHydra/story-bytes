@@ -16,7 +16,7 @@ vi.mock('fs/promises', async (orig) => ({ ...(await orig<typeof import('fs/promi
 
 import { createApp } from '../app';
 import { enqueueTheory } from '../jobs/queue';
-import { getSubmission } from '../services/theories';
+import { getSubmission, listSubmissions } from '../services/theories';
 
 const SID = '123e4567-e89b-12d3-a456-426614174000';
 
@@ -49,5 +49,22 @@ describe('theory submissions', () => {
     vi.mocked(getSubmission).mockResolvedValueOnce(null);
     const res = await request(createApp()).get(`/api/theories/${SID}`);
     expect(res.status).toBe(404);
+  });
+
+  it('POST /theories with a malformed sourceUrl → 400', async () => {
+    const res = await request(createApp())
+      .post(`/api/stories/${SID}/theories`)
+      .send({ text: 'A reasonably long fan theory that easily clears the minimum length.', sourceUrl: 'not-a-url' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('GET /stories/:id/theories lists recent submissions', async () => {
+    vi.mocked(listSubmissions).mockResolvedValueOnce([
+      { submissionId: 's1', status: 'completed', chunksKept: 2, error: null, createdAt: '' },
+    ]);
+    const res = await request(createApp()).get(`/api/stories/${SID}/theories`);
+    expect(res.status).toBe(200);
+    expect(res.body.submissions).toHaveLength(1);
   });
 });

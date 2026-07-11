@@ -7,8 +7,9 @@
 import { unlink } from 'fs/promises';
 
 import { runPythonJson } from '../../services/pythonRunner';
-import { getProjectRoot } from '../../controllers/assets';
+import { getProjectRoot } from '../../services/paths';
 import { logger } from '../../services/logger';
+import { failSubmission } from '../../services/theories';
 import type { TheoryJobData } from '../types';
 
 export const runTheoryPipeline = async (data: TheoryJobData): Promise<void> => {
@@ -25,8 +26,11 @@ export const runTheoryPipeline = async (data: TheoryJobData): Promise<void> => {
   try {
     await runPythonJson(projectRoot, args);
   } catch (err) {
-    // The pipeline marks the submission 'failed' itself; log for diagnostics.
+    // The pipeline normally marks the submission 'failed' itself, but if it never started (uv/script
+    // missing) or crashed before writing status, force a terminal state so the client stops polling.
     logger.error({ err, submissionId: data.submissionId }, 'Theory pipeline failed');
+    await failSubmission(data.submissionId, err instanceof Error ? err.message : 'pipeline failed')
+      .catch((e) => logger.error({ err: e }, 'failSubmission fallback failed'));
   } finally {
     await unlink(data.filePath).catch(() => { /* best effort */ });
   }

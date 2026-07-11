@@ -78,7 +78,7 @@ describe('getOrGenerateEntityImage', () => {
 
   it('generates, writes to disk, and returns ready on a cache miss under cap', async () => {
     routeQueries({ firstChapter: 1, capCount: 0 });
-    vi.mocked(generator.generateImage).mockResolvedValueOnce({ data: Buffer.from('img'), mimeType: 'image/png' });
+    vi.mocked(generator.generateImage).mockResolvedValueOnce({ data: Buffer.from('img'), mimeType: 'image/png', inputTokens: 12, outputTokens: 0 });
     const res = await getOrGenerateEntityImage('e1', 10);
     expect(res).toMatchObject({ status: 'ready', cached: false });
     expect(generator.generateImage).toHaveBeenCalledTimes(1);

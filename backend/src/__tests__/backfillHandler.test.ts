@@ -11,7 +11,7 @@ vi.mock('../controllers/assets', () => ({ getProjectRoot: () => '/proj' }));
 
 import { runBackfillPipeline } from '../jobs/handlers/backfill';
 import { runPythonJson } from '../services/pythonRunner';
-import { setIngestStatus } from '../jobs/progress';
+import { setIngestStatus, recordJobEvent } from '../jobs/progress';
 
 describe('runBackfillPipeline', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -26,6 +26,9 @@ describe('runBackfillPipeline', () => {
     ]);
     expect(setIngestStatus).toHaveBeenCalledWith('job-1', 'active');
     expect(setIngestStatus).toHaveBeenCalledWith('job-1', 'completed', { storyId: 's1' });
+    const events = vi.mocked(recordJobEvent).mock.calls.map((c) => c[1].event);
+    expect(events).toContain('started');
+    expect(events).toContain('completed');
   });
 
   it('marks the job failed and rethrows when a step fails', async () => {

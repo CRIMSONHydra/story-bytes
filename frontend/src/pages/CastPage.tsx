@@ -64,7 +64,7 @@ export default function CastPage() {
               />
             ) : (
               <div className="cast-placeholder">
-                <button type="button" onClick={() => generate(m)} disabled={Boolean(busy[m.entityId])}>
+                <button type="button" onClick={() => generate(m)} disabled={busy[m.entityId] === 'Generating…'}>
                   {busy[m.entityId] ?? 'Generate portrait'}
                 </button>
               </div>

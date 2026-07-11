@@ -37,6 +37,15 @@ export const createSubmission = async (storyId: string, userId?: string, sourceU
   return rows[0].submission_id;
 };
 
+/** Force a submission to 'failed' — a fallback for when the Python pipeline never reaches terminal. */
+export const failSubmission = async (submissionId: string, error: string): Promise<void> => {
+  await pool.query(
+    `UPDATE theory_submissions SET status = 'failed', error = $2, updated_at = NOW()
+     WHERE submission_id = $1 AND status IN ('queued', 'active')`,
+    [submissionId, error.slice(0, 500)],
+  );
+};
+
 export const getSubmission = async (submissionId: string): Promise<TheorySubmission | null> => {
   const { rows } = await pool.query<Row>(`SELECT ${COLS} FROM theory_submissions WHERE submission_id = $1`, [submissionId]);
   return rows[0] ? map(rows[0]) : null;

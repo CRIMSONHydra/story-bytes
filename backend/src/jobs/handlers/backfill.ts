@@ -11,7 +11,7 @@
  */
 
 import { runPythonJson } from '../../services/pythonRunner';
-import { getProjectRoot } from '../../controllers/assets';
+import { getProjectRoot } from '../../services/paths';
 import { logger } from '../../services/logger';
 import { QUEUE_BACKFILL, type BackfillJobData } from '../types';
 import { recordJobEvent, setIngestStatus } from '../progress';
@@ -33,7 +33,10 @@ export const runBackfillPipeline = async (jobId: string, data: BackfillJobData):
   try {
     for (const step of STEPS) {
       await ev('progress', step.stage, `Running ${step.stage} extraction`);
-      await runPythonJson(projectRoot, [step.script, '--story-id', data.storyId]);
+      await runPythonJson(projectRoot, [step.script, '--story-id', data.storyId], {
+        // Forward any per-step progress the Python script emits for finer-grained visibility.
+        onProgress: (e) => void ev('progress', step.stage, typeof e.message === 'string' ? e.message : undefined),
+      });
     }
     await setIngestStatus(jobId, 'completed', { storyId: data.storyId });
     await ev('completed', 'appearance', 'Backfill complete');

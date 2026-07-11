@@ -12,7 +12,7 @@ import { mkdir, writeFile, readFile } from 'fs/promises';
 import { resolve } from 'path';
 
 import { pool } from '../db/pool';
-import { getProjectRoot } from '../controllers/assets';
+import { getProjectRoot } from './paths';
 import { getEntityCanon } from './canon';
 import { buildImagePrompt } from './promptBuilder';
 import { generateImage } from './generator';
@@ -79,7 +79,7 @@ export const getOrGenerateEntityImage = async (
                      prompt = EXCLUDED.prompt, model = EXCLUDED.model, status = 'ready', created_at = NOW()`,
       [imageId, entityId, canon.canonHash, filePath, prompt, IMAGE_GEN_MODEL],
     );
-    recordUsage({ context: 'image-gen', model: IMAGE_GEN_MODEL, inputTokens: 0, outputTokens: 0 });
+    recordUsage({ context: 'image-gen', model: IMAGE_GEN_MODEL, inputTokens: image.inputTokens, outputTokens: image.outputTokens });
     return { status: 'ready', imageId, cached: false };
   } catch (err) {
     logger.error({ err, entityId }, 'Image generation failed');
@@ -129,17 +129,16 @@ export const listCast = async (storyId: string, boundary: number): Promise<CastM
     [storyId, boundary],
   )).rows;
 
-  const cast: CastMember[] = [];
-  for (const e of entities) {
+  // Parallelize the per-entity canon + image lookup (was a 2N+1 sequential round-trip).
+  return Promise.all(entities.map(async (e) => {
     const canon = await getEntityCanon(e.entity_id, boundary);
     const img = (await pool.query<{ image_id: string }>(
       "SELECT image_id FROM generated_images WHERE entity_id = $1 AND canon_hash = $2 AND status = 'ready'",
       [e.entity_id, canon.canonHash],
     )).rows[0];
-    cast.push({
+    return {
       entityId: e.entity_id, name: e.canonical_name, entityType: e.entity_type,
       hasImage: Boolean(img), imageId: img?.image_id ?? null,
-    });
-  }
-  return cast;
+    };
+  }));
 };

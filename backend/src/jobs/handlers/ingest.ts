@@ -8,7 +8,7 @@ import { resolve } from 'path';
 import { rm, unlink } from 'fs/promises';
 
 import { runPythonJson } from '../../services/pythonRunner';
-import { getProjectRoot } from '../../controllers/assets';
+import { getProjectRoot } from '../../services/paths';
 import { logger } from '../../services/logger';
 import { QUEUE_INGEST, type IngestJobData } from '../types';
 import { recordJobEvent, setIngestStatus } from '../progress';

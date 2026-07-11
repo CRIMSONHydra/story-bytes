@@ -28,8 +28,19 @@ describe('theories API', () => {
     expect(JSON.parse(fn.mock.calls[0][1].body)).toEqual({ text: 'a long enough theory text', sourceUrl: 'https://x.test/t' });
   });
 
+  it('submitTheory omits sourceUrl when not provided', async () => {
+    const fn = stub({ submissionId: 's1', status: 'queued' }, 202);
+    await submitTheory('story1', 'a long enough theory text');
+    expect(JSON.parse(fn.mock.calls[0][1].body)).toEqual({ text: 'a long enough theory text' });
+  });
+
   it('getSubmission fetches the status', async () => {
     stub({ submissionId: 's1', status: 'completed', chunksKept: 2, error: null, createdAt: '' });
     await expect(getSubmission('s1')).resolves.toMatchObject({ status: 'completed', chunksKept: 2 });
+  });
+
+  it('submitTheory rejects (ApiError) on a 4xx', async () => {
+    stub({ error: { code: 'VALIDATION_ERROR', message: 'too short' } }, 400);
+    await expect(submitTheory('story1', 'x')).rejects.toMatchObject({ name: 'ApiError', code: 'VALIDATION_ERROR' });
   });
 });
