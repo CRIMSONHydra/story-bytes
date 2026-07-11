@@ -14,7 +14,7 @@ story-bytes/
 │   │   ├── services/      # Business logic (rag, llm, db, search)
 │   │   ├── db/            # PostgreSQL connection pool
 │   │   ├── config/        # Environment validation (Zod) — loads .env from project root
-│   │   ├── __tests__/     # Vitest test suites (109 tests)
+│   │   ├── __tests__/     # Vitest test suites (150 tests)
 │   │   ├── app.ts         # Express app factory
 │   │   ├── routes.ts      # API route definitions
 │   │   └── server.ts      # Entry point with graceful shutdown
@@ -54,7 +54,7 @@ story-bytes/
   tiers; override `GEMINI_MAIN_MODEL=gemini-flash-latest` post-demo). Model IDs centralized in
   `backend/src/config/models.ts` + `ingestion/models.py`.
 - **Embeddings:** Gemini `gemini-embedding-2` (1536-dim MRL, in-prompt task instruction, auto-normalized)
-- **Testing:** Vitest 4 + Supertest (backend, 109 tests) · Vitest + React Testing Library + jsdom (frontend, 25 tests)
+- **Testing:** Vitest 4 + Supertest (backend, 150 tests) · Vitest + React Testing Library + jsdom (frontend, 39 tests)
 - **Linting:** ESLint 9 flat config + typescript-eslint + eslint-config-prettier (backend), react-hooks + react-refresh plugins (frontend)
 - **Styling:** Vanilla CSS only — **NO Tailwind CSS**
 - **Ingestion:** Python 3.12+ (psycopg2, google-genai, ebooklib, BeautifulSoup4, rarfile, pytesseract, Pillow)
@@ -80,7 +80,7 @@ pnpm build                 # Build backend + frontend
 pnpm lint                  # Lint backend + frontend
 
 # Test
-pnpm test                  # Run backend + frontend suites (pnpm -r): backend 109, frontend 25
+pnpm test                  # Run backend + frontend suites (pnpm -r): backend 150, frontend 39
 
 # Individual workspace commands
 pnpm --filter backend <script>
@@ -140,6 +140,10 @@ uv run --project ingestion python ingestion/enrich_images.py --all
 | GET | `/api/jobs/:jobId` | Ingest job status + event stream (M5) |
 | GET | `/api/admin/jobs` | Recent ingest jobs (admin) · `POST /api/admin/jobs/:jobId/cancel` |
 | GET | `/api/admin/usage` | LLM token usage + read-time cost (M6, admin) |
+| GET/PATCH/DELETE | `/api/stories/:id/chapters/manage`, `/api/chapters/:id` | Chapter management (M13); paste-append `POST /api/stories/:id/chapters` + `/estimate` |
+| GET/POST | `/api/stories/:id/cast`, `/entities/:id/image`, `/generated-images/:id` | Character cast + spoiler-safe image generation (M17) |
+| GET/POST | `/api/stories/:id/theories`, `/api/theories/:id` | Fan-theory submit (async, spoiler-classified) + poll (M19) |
+| POST | `/api/admin/stories/:id/backfill` | Bring a story up to the feature set — graph→foreshadow→appearance (M-Backfill) |
 
 Admin routes (`/api/admin/*`) require `Authorization: Bearer $ADMIN_TOKEN` when `ADMIN_TOKEN` is set.
 

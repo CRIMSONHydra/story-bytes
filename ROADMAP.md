@@ -373,11 +373,20 @@ one external-knowledge subsystem, one usage table). The full underlying pillar d
 [`docs/improvement-plan/pillar-designs-and-maps.md`](docs/improvement-plan/pillar-designs-and-maps.md). Start with the
 "walking skeleton" (M1–M10b) which delivers the catch-up experience without the four heavy feature pillars.
 
-**Status (2026-07):** the **Platform foundation (M1–M6)** is complete — error/log/security spine, node-pg-migrate,
-Python runtime contract + `uv` packaging, users/profiles + identity + frontend API client + FE test framework,
-async ingestion via pg-boss, and LLM cost tracking + CI smoke. The RAG walking skeleton (M7–M9, M14/M15, Recap)
-and the embedding-2 migration are also done. Remaining: the four heavy feature pillars — Theories (M18/M19),
-Image generation (M16/M17), and any deferred async-ingest polish (M11–M13).
+**Status (2026-07): the improvement plan (M1–M19 + Recap + Backfill) is COMPLETE.**
+- **Platform (M1–M6):** error/log/security spine, node-pg-migrate, Python runtime contract + `uv` packaging,
+  users/profiles + identity + frontend API client + FE test framework, async ingestion (pg-boss), cost tracking + CI smoke.
+- **RAG (M7–M10b) + Recap:** eval harness, spoiler hardening, citations/confidence/traces, retrieval quality ladder
+  (query rewrite, RRF, budgeted context, chat history), answer guard, spoiler-safe recap with foreshadowing. embedding-2.
+- **Incremental ingestion (M11–M13):** content-hash diff/append/replace, chapter management, paste-append, .txt/.md/.pdf, cost gate.
+- **Knowledge graph (M14/M15):** chapter-versioned entities/relationships/threads/foreshadowing, GraphRAG, graph UI.
+- **Image pillar (M16/M17):** appearance canon (spoiler-sliced) + live Nano-Banana portraits (cached, capped, private) + Cast UI.
+- **Theories pillar (M18/M19):** paste → spoiler-classified (default-deny) external knowledge + theory-mode retrieval + submit UI.
+- **M-Backfill:** one job brings an existing story up to the feature set (graph → foreshadow → appearance).
+
+Deferred within the plan (noted, non-blocking): `chapter_micro_summaries` retrieval tier + reranker flag (M10),
+comic reference images (M17), live internet-fetch for theories (M19, ToS-gated — paste covers it), seed-dump `SEED_DEMO`
+reconciliation (§7, human decision).
 
 ## Phase Dependencies
 
