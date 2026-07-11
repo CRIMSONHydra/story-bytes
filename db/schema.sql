@@ -179,15 +179,46 @@ CREATE INDEX IF NOT EXISTS idx_annotations_story
 -- External Knowledge (Web Search Results)
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS external_knowledge (
-    knowledge_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+-- Source documents for external knowledge (M18). Defined before external_knowledge (FK target).
+CREATE TABLE IF NOT EXISTS knowledge_documents (
+    document_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     story_id        UUID NOT NULL REFERENCES stories(story_id) ON DELETE CASCADE,
-    content         TEXT NOT NULL,
+    title           TEXT,
     source_url      TEXT,
-    knowledge_type  TEXT CHECK (knowledge_type IN ('fact', 'theory', 'speculation')),
-    metadata        JSONB DEFAULT '{}',
-    created_at      TIMESTAMPTZ DEFAULT NOW()
+    content_sha256  TEXT,
+    submitted_by    UUID REFERENCES users(user_id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_knowledge_docs_story ON knowledge_documents (story_id);
+
+CREATE TABLE IF NOT EXISTS external_knowledge (
+    knowledge_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    story_id          UUID NOT NULL REFERENCES stories(story_id) ON DELETE CASCADE,
+    content           TEXT NOT NULL,
+    source_url        TEXT,
+    knowledge_type    TEXT CHECK (knowledge_type IN ('fact', 'theory', 'speculation')),
+    max_chapter_order INT,                          -- M18: latest chapter safe to show at (NULL = deny)
+    content_sha256    TEXT,
+    document_id       UUID REFERENCES knowledge_documents(document_id) ON DELETE CASCADE,
+    metadata          JSONB DEFAULT '{}',
+    created_at        TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_external_knowledge_scope ON external_knowledge (story_id, max_chapter_order);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_external_knowledge_sha ON external_knowledge (story_id, content_sha256);
+
+CREATE TABLE IF NOT EXISTS theory_submissions (
+    submission_id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    story_id        UUID NOT NULL REFERENCES stories(story_id) ON DELETE CASCADE,
+    user_id         UUID REFERENCES users(user_id) ON DELETE SET NULL,
+    source_url      TEXT,
+    status          TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'active', 'completed', 'failed')),
+    document_id     UUID REFERENCES knowledge_documents(document_id) ON DELETE SET NULL,
+    chunks_kept     INT,
+    error           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_theory_submissions_story ON theory_submissions (story_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS knowledge_embeddings (
     knowledge_id    UUID REFERENCES external_knowledge(knowledge_id) ON DELETE CASCADE,
@@ -481,3 +512,32 @@ CREATE TABLE IF NOT EXISTS llm_usage (
 );
 CREATE INDEX IF NOT EXISTS idx_llm_usage_created ON llm_usage (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_llm_usage_model ON llm_usage (model);
+
+-- ---------------------------------------------------------------------------
+-- Image entities / canon + generated images (migration 1700000000009, M16)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS entity_appearance_facts (
+    fact_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    entity_id      UUID NOT NULL REFERENCES kg_entities(entity_id) ON DELETE CASCADE,
+    chapter_order  INT NOT NULL,
+    fact_type      TEXT NOT NULL,
+    value          TEXT NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (entity_id, chapter_order, fact_type)
+);
+CREATE INDEX IF NOT EXISTS idx_appearance_entity_chapter
+    ON entity_appearance_facts (entity_id, chapter_order);
+
+CREATE TABLE IF NOT EXISTS generated_images (
+    image_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    entity_id    UUID NOT NULL REFERENCES kg_entities(entity_id) ON DELETE CASCADE,
+    canon_hash   TEXT NOT NULL,
+    file_path    TEXT,
+    prompt       TEXT NOT NULL,
+    model        TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'blocked', 'failed')),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (entity_id, canon_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_generated_images_entity ON generated_images (entity_id);

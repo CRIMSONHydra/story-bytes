@@ -44,3 +44,6 @@ dataset
 
 # Generated eval reports
 eval/reports/*.json
+
+# M17: generated character images (served from disk, private)
+generated/

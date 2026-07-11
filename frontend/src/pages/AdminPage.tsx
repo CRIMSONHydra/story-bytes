@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { API_BASE } from '../config';
-import { apiGet } from '../api/client';
+import { apiGet, apiPost } from '../api/client';
 import { submitIngest, getJob, isTerminal, type JobEvent } from '../api/jobs';
 
 interface UsageRow {
@@ -91,6 +91,16 @@ export default function AdminPage() {
   }, []);
 
   const existingSeries = [...new Set(stories.map(s => s.series_title).filter(Boolean))] as string[];
+
+  const handleBackfill = async (storyId: string, title: string) => {
+    if (!confirm(`Backfill "${title}"? Runs graph → foreshadow → appearance extraction (populates Graph, Recap threads, and Cast portraits).`)) return;
+    try {
+      const res = await apiPost<{ jobId: string }>(`/api/admin/stories/${storyId}/backfill`);
+      alert(`Backfill queued (job ${res.jobId}). Track progress under Jobs.`);
+    } catch {
+      alert('Failed to queue backfill');
+    }
+  };
 
   const handleDelete = async (storyId: string, title: string) => {
     if (!confirm(`Delete "${title}"? This removes all chapters, embeddings, and assets.`)) return;
@@ -283,6 +293,12 @@ export default function AdminPage() {
                           >
                             Chapters
                           </Link>
+                          <button
+                            className="manage-link"
+                            onClick={ev => { ev.stopPropagation(); handleBackfill(story.story_id, story.title); }}
+                          >
+                            Backfill
+                          </button>
                           <button
                             className="delete-btn"
                             onClick={ev => { ev.stopPropagation(); handleDelete(story.story_id, story.title); }}

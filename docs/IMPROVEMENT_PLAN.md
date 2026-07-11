@@ -597,14 +597,33 @@ reaches context/response; lens-off recap byte-identical to non-foreshadowing). �
 **➡ Upgrade Recap** with "Main cast right now" + "Open questions" + the opt-in "Threads worth keeping an eye on" (2.14)
 sections here.
 
-**M16 — Image entities/canon (on shared entities) + archive helper** · *Image A1–A4* · prereq: M14, M5, M8 · **(2.10)**
+**M16 — Image entities/canon (on shared entities) + archive helper** · *Image A1–A4* · prereq: M14, M5, M8 · ✅ **DONE**
+(migration `..._image_canon`: `entity_appearance_facts` + `generated_images` FK'd to `kg_entities`;
+`services/canon.ts` `buildCanon` slices facts ≤ boundary + supersedes by latest chapter + hashes
+[post-boundary traits never enter the canon]; `services/archiveImages.ts` shared EPUB/CBZ extractor,
+`assets.ts` consumes it. Appearance-facts LLM population folds into M-Backfill; M17 falls back to a
+generic prompt when facts are absent. 5 canon tests.)
+
+Original scope:
 `services/archiveImages.ts` (shared JSZip/EPUB+CBZ helper; `controllers/assets.ts` consumes it). `entity_appearance_facts`
 + `generated_images` tables FK'd to `kg_entities`. Fold canon extraction into the M14 pass (appearance-facts branch;
 comic `enriched_metadata` mining add-on). `canon.ts` (slice ≤ boundary + supersession + `canonHash`). **Rewrite** the
 image-gen §3.4 "lazy fallback" (VAGUE — see §7): entities now pre-exist, so the fallback triggers only when facts are
 absent-but-entity-present; give it a bounded timeout inside the request.
 
-**M17 — Image generation service + Cast UI** · *Image A5–A9* · prereq: M16, M4, M5
+**M17 — Image generation service + Cast UI** · *Image A5–A9* · prereq: M16, M4, M5 · ✅ **DONE**
+(`promptBuilder.ts` pure + spoiler-structural: the prompt is built from the canon ONLY — no name, no
+free-text description — so a post-boundary trait can't reach the model; `generator.ts` live
+`gemini-2.5-flash-image` via `@google/genai` (bounded retry); `imageGen.ts` cache→cap→gate state
+machine (one image per (entity, canon_hash); IMAGE_GEN_DAILY_CAP/day; IMAGE_GEN_ENABLED), disk-served
+private images; endpoints `GET /cast`, `POST /entities/:id/image` (admin, upToChapter required,
+unrevealed→404), `GET /generated-images/:id`; `CastPage` grid + generate + lightbox, linked from the
+story list. **Verified live:** a real 1.3 MB portrait generated on flash-lite-image, cache hit on
+re-request, stored prompt carried no name/description/post-boundary trait. Golden prompt test + state-
+machine tests (spoiler-gate/cache/cap/generate/fail). Deferred: comic `referenceImages.ts`.
+→ **Human checkpoint #7 answered** (model = gemini-2.5-flash-image, ~25/day cap, private/no-share).)
+
+Original scope:
 `promptBuilder.ts` (pure, spoiler-safety structural — post-boundary facts never enter the prompt), `referenceImages.ts`
 (comics; visible-alias-scoped panel selection), `generator.ts` (Nano-Banana via `@google/genai`; blocked/429-retry/cap/
 cache/force state machine; **bound retries so worst-case < 120s nginx timeout**, or queue it). `generated_images` served
@@ -613,7 +632,15 @@ from disk, cached on `(entity_id, canon_hash)`. `CastPage` + `EntityCard` + ligh
 daily cap enforced; cost ≤ configured cap. → **Human checkpoint #7** (`@google/genai` pin supports `generateContent`
 image output — 2.5-flash-image dies 2026-10-02, Imagen 4 dies 2026-08-17; IP/likeness = no public sharing).
 
-**M18 — External-knowledge subsystem v1 (paste → classify)** · *Internet B1–B4 (scoped)* · prereq: M2, M5, M9 · **(2.5)**
+**M18 — External-knowledge subsystem v1 (paste → classify)** · *Internet B1–B4 (scoped)* · prereq: M2, M5, M9 · **(2.5)** · ✅ **DONE**
+(migration `..._external_knowledge`: external_knowledge reworked to a spoiler-safe chunk table
+[`max_chapter_order` NULL=default-deny, `content_sha256` dedup, `document_id`] + `knowledge_documents`
++ `theory_submissions`; legacy rows wiped; unsafe `insertExternalKnowledge` write path deleted. Retrieval
+`findSimilarExternalKnowledge` DEFAULT-DENIES [NOT NULL max_chapter_order <= boundary]. `ingestion/external/`
+classify.py [LLM, pure `parse_classification` denies null/low-conf/beyond-final] + pipeline.py [per-
+paragraph chunk → dedup → classify → embed → insert, only safe chunks]. Verified live: safe paragraph
+kept [ch5], future-spoiler paragraph denied. → **Human checkpoint #8**: internet-fetch stays deferred,
+paste-only.)
 Migration: `external_knowledge` reworked into the chunk table (+ provenance + `spoiler_scope`/`max_chapter_order` +
 `content_sha256` dedup) + `knowledge_documents` + `theory_submissions`; wipe legacy junk rows; delete the
 query-embedding write path. `ingestion/external/` (`normalize.py`, `chunker.py`, `fetch_generic.py` for paste,
@@ -622,7 +649,12 @@ timeline reference (NOT cumulative `chapter_summaries` — see §7); default-den
 *DONE+:* classifier **false-safe rate < 2%** on a hand-labeled eval set; NULL-chapter default-deny SQL branch tested.
 → **Human checkpoint #8** (classifier gate).
 
-**M19 — Theory jobs/retrieval/UI (v1)** · *Internet B5, B8, B9 (subset)* · prereq: M18, M8, M5, M4
+**M19 — Theory jobs/retrieval/UI (v1)** · *Internet B5, B8, B9 (subset)* · prereq: M18, M8, M5, M4 · ✅ **DONE**
+(pg-boss `theory-submission` worker runs the classify pipeline; `POST /stories/:id/theories` → 202 +
+poll `GET /theories/:id`; `services/theories.ts`; theory-mode chat now returns spoiler-filtered
+`externalSources` with [E#] attribution [CSE path already gone]; `TheorySubmit` component + external-
+source pills in `ChatInterface`. Verified live E2E: submit → classified [ch5] → theory chat at boundary
+20 surfaced it as an external source. Backend 148 / FE 39 tests.)
 pg-boss `theory:submission` handler + submission endpoints + polling; `services/knowledge.ts findExternalKnowledge`
 (spoiler-filtered), theory-mode `[En]` attribution + cited-only `externalSources`, CSE snippet path deleted;
 `TheorySubmit.tsx` + external-source pills; empty-state ("no fan theories yet — paste a thread"). Optional
@@ -632,7 +664,15 @@ spoiler-RAG rewrite-to-scrubbed-paraphrase layer.
 cron, Batch-API. Gate any internet-fetching behind* **human checkpoint #8** *(Reddit Responsible-Builder ToS / ML-train
 ban; Fandom CC-BY-SA).*
 
-**M-Backfill — "Bring an existing story up to the current feature set"** · prereq: M14, M16, M10 · **(completeness)**
+**M-Backfill — "Bring an existing story up to the current feature set"** · prereq: M14, M16, M10 · **(completeness)** · ✅ **DONE**
+(pg-boss `backfill` job [jobs/handlers/backfill.ts] runs graph → foreshadow → appearance extraction in
+dependency order for a story, tracked via ingest_jobs + job_events [GET /api/jobs/:id]; `POST
+/api/admin/stories/:id/backfill` → 202; AdminPage "Backfill" button per story. `extract_appearance.py`
+[the M16-deferred appearance-fact LLM extractor; pure `parse_appearance_facts` validates type/boundary]
+populates entity_appearance_facts → real canon → real Cast portraits. Verified live: 23 seed characters
+→ 16 chapter-versioned appearance facts. Deferred: chapter_micro_summaries + RETRIEVAL_DOCUMENT re-embed
+fold in once the micro-summaries tier lands [M10]. Seed-dump SEED_DEMO reconciliation remains a human
+decision [§7].)
 One admin action / queued job type that runs the consolidated extraction + micro-summaries + `RETRIEVAL_DOCUMENT`
 re-embed **in dependency order** for an existing story (entities → appearance facts → states/relationships/events →
 micro-summaries → re-embed). Without this, the seed dump and any existing library show an empty Cast page, blank graph,

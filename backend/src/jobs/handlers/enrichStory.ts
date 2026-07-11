@@ -6,7 +6,7 @@
  */
 
 import { runPythonJson } from '../../services/pythonRunner';
-import { getProjectRoot } from '../../controllers/assets';
+import { getProjectRoot } from '../../services/paths';
 import { getSeriesTitleForStory, getStoryIdsBySeriesTitle } from '../../services/admin';
 import { logger } from '../../services/logger';
 import { QUEUE_ENRICH, type EnrichJobData } from '../types';

@@ -3,16 +3,12 @@ import { getAssetById, getStoryById } from '../services/db';
 import { readFile, access } from 'fs/promises';
 import { join, extname, resolve } from 'path';
 import { asyncHandler, badRequest, notFound } from '../middleware/errors';
+import { extractImageFromArchive } from '../services/archiveImages';
 
-/**
- * Resolve the project root directory.
- * In Docker (NODE_ENV=production), cwd is /app (the project root).
- * In dev, cwd is backend/, so go up one level.
- */
-export function getProjectRoot(): string {
-  if (process.env.NODE_ENV === 'production') return process.cwd();
-  return resolve(process.cwd(), '..');
-}
+// getProjectRoot now lives in services/paths.ts (services must not depend on controllers). Import it
+// for local use and re-export for any external caller that still imports it from here.
+import { getProjectRoot } from '../services/paths';
+export { getProjectRoot };
 
 const MIME_MAP: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -119,45 +115,11 @@ export const handleGetStoryImage = asyncHandler(async (req: Request, res: Respon
 
     if (!epubPath) throw notFound('EPUB file not found for this story');
 
-    // Extract image from EPUB (ZIP)
-    const { default: JSZip } = await import('jszip');
-    const epubData = await readFile(epubPath);
-    const zip = await JSZip.loadAsync(epubData);
-
-    // Try the exact path, then with common prefixes
-    const candidates = [
-      imagePathStr,
-      `OEBPS/${imagePathStr}`,
-      `OPS/${imagePathStr}`,
-    ];
-
-    for (const candidate of candidates) {
-      const entry = zip.file(candidate);
-      if (entry) {
-        const data = await entry.async('nodebuffer');
-        const ext = extname(candidate).toLowerCase();
-        res.set('Content-Type', MIME_MAP[ext] || 'image/jpeg');
-        res.set('Cache-Control', 'public, max-age=86400');
-        res.send(data);
-        return;
-      }
-    }
-
-    // Last resort: search all files in the ZIP for a matching filename
-    const targetName = imagePathStr.split('/').pop()?.toLowerCase();
-    if (targetName) {
-      for (const [path, file] of Object.entries(zip.files)) {
-        if (!file.dir && path.toLowerCase().endsWith(targetName)) {
-          const data = await file.async('nodebuffer');
-          const ext = extname(path).toLowerCase();
-          res.set('Content-Type', MIME_MAP[ext] || 'image/jpeg');
-          res.set('Cache-Control', 'public, max-age=86400');
-          res.send(data);
-          return;
-        }
-      }
-    }
-
-    throw notFound('Image not found in EPUB');
+    // Extract the image from the EPUB/CBZ (ZIP) via the shared archive helper (M16).
+    const image = await extractImageFromArchive(epubPath, imagePathStr);
+    if (!image) throw notFound('Image not found in EPUB');
+    res.set('Content-Type', image.contentType);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(image.data);
   }
 });

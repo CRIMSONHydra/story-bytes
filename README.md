@@ -8,7 +8,9 @@ Local-first toolkit for reading novels (EPUB) and comics (CBZ/CBR) with a **spoi
 - **Catch-me-up recap** — a "story so far" up to chapter N, with opt-in, spoiler-safe foreshadowing emphasis (setup + a vetted hint; the payoff is never revealed).
 - **Chapter-versioned knowledge graph** — entities, relationships, events, and plot threads, all gated so an unrevealed entity is a 404, not a leak. Browsable in an interactive graph UI.
 - **Multi-profile** — local reader profiles; reading progress and chat scope follow the selected profile.
-- **Async self-serve ingestion** — upload an EPUB/CBZ/CBR; the pipeline (extract → embed → tag/enrich images) runs in the background with live progress.
+- **Async self-serve ingestion** — upload an EPUB/CBZ/CBR/**TXT/MD/PDF**; the pipeline (extract → embed → tag/enrich images) runs in the background with live progress. Manage chapters (rename, reorder, front-matter, paste-append) with a pre-flight cost estimate.
+- **Character cast + AI portraits** — spoiler-safe generated portraits (Nano-Banana) built only from appearance facts revealed up to your chapter; cached, capped, private.
+- **Fan theories** — paste a theory; it's classified so only parts about chapters you've read can ever surface in theory-mode chat (default-deny). Internet fetching is intentionally not shipped (ToS) — paste covers it.
 - **Operable** — structured error envelope + request ids, pino logging, admin auth, rate limits, and read-time LLM cost accounting.
 
 ## Quick Start (Docker)
@@ -173,6 +175,9 @@ uv run --project ingestion python ingestion/enrich_images.py --all
 | POST | `/api/stories/:storyId/summarize` | Generate chapter summary |
 | GET | `/api/stories/:storyId/recap` | Catch-me-up recap (`?upToChapter=N&foreshadow=1`) |
 | GET | `/api/stories/:storyId/graph` · `/entities/:id` · `/threads` | Spoiler-gated knowledge graph (M15) |
+| GET/POST | `/api/stories/:id/cast` · `/entities/:id/image` · `/generated-images/:id` | Cast + spoiler-safe AI portraits (M17) |
+| POST/GET | `/api/stories/:id/theories` · `/api/theories/:id` | Fan-theory submit (async classify) + poll (M19) |
+| GET/POST | `/api/stories/:id/chapters/manage` · `/api/chapters/:id` | Chapter management + paste-append (M13) |
 | GET | `/api/assets/:assetId/image` · `/api/stories/:storyId/image?path=...` | Serve images |
 | GET/PUT | `/api/stories/:storyId/progress` | Reading progress (per profile) |
 | GET | `/api/stories/:storyId/series-chapters` · `/api/series` | Cross-volume / series listing |
@@ -199,8 +204,8 @@ single envelope: `{ error: { code, message, details?, requestId } }`.
 ### Running Tests
 
 ```bash
-pnpm test                                              # backend (109) + frontend (25) via pnpm -r
-uv run --project ingestion python -m pytest ingestion/tests/ -v   # 169 Python tests
+pnpm test                                              # backend (150) + frontend (39) via pnpm -r
+uv run --project ingestion python -m pytest ingestion/tests/ -v   # Python tests
 pnpm lint                                              # Lint both packages (zero-warning policy)
 pnpm build                                             # Type-check + build both
 ```

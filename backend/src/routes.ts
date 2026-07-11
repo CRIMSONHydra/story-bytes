@@ -12,7 +12,7 @@ import { handleGetRecap } from './controllers/recap';
 import { handleGetStoryGraph, handleSearchEntities, handleGetEntity, handleGetThreads } from './controllers/graph';
 import { handleGetAssetImage, handleGetStoryImage } from './controllers/assets';
 import { handleGetProgress, handleUpdateProgress } from './controllers/progress';
-import { handleAdminGetStories, handleAdminDeleteStory, handleAdminIngest, handleGetSeries, handleGetTrace } from './controllers/admin';
+import { handleAdminGetStories, handleAdminDeleteStory, handleAdminIngest, handleGetSeries, handleGetTrace, handleBackfillStory } from './controllers/admin';
 import { handleListUsers, handleGetUser, handleCreateUser, handleUpdateUser, handleDeleteUser } from './controllers/users';
 import { handleGetJob, handleListJobs, handleCancelJob } from './controllers/jobs';
 import { handleGetUsage } from './controllers/usage';
@@ -20,6 +20,8 @@ import {
   handleListChaptersAdmin, handleUpdateChapter, handleDeleteChapter,
   handleReorderChapters, handleAppendChapter, handleEstimateAppend,
 } from './controllers/chapterAdmin';
+import { handleGetCast, handleGenerateEntityImage, handleServeGeneratedImage } from './controllers/images';
+import { handleSubmitTheory, handleGetSubmission, handleListSubmissions } from './controllers/theories';
 import { upload } from './middleware/upload';
 import { adminAuth } from './middleware/adminAuth';
 import { chatLimiter, ingestLimiter } from './middleware/rateLimits';
@@ -47,11 +49,21 @@ router.delete('/chapters/:chapterId', adminAuth, handleDeleteChapter);
 // Chat (RAG) — rate-limited (each call fans out to embedding + model inference)
 router.post('/chat', chatLimiter, handleChat);
 
+// Fan-theory submissions (M19) — paste → async classify (spoiler-scoped) → 202 + poll
+router.post('/stories/:storyId/theories', handleSubmitTheory);
+router.get('/stories/:storyId/theories', handleListSubmissions);
+router.get('/theories/:submissionId', handleGetSubmission);
+
 // Summarization (Phase 4)
 router.post('/stories/:storyId/summarize', handleSummarize);
 
 // Recap — catch-me-up composition with opt-in foreshadowing emphasis (Improvement Plan §2.12, §2.14)
 router.get('/stories/:storyId/recap', handleGetRecap);
+
+// Character images (M17) — upToChapter required; unrevealed entity 404s. Generation is gated (cost).
+router.get('/stories/:storyId/cast', handleGetCast);
+router.post('/stories/:storyId/entities/:entityId/image', adminAuth, handleGenerateEntityImage);
+router.get('/generated-images/:imageId', handleServeGeneratedImage);
 
 // Knowledge graph (M15) — upToChapter required on all; spoiler-gated
 router.get('/stories/:storyId/graph', handleGetStoryGraph);
@@ -95,5 +107,6 @@ router.delete('/admin/stories/:storyId', adminAuth, handleAdminDeleteStory);
 router.post('/admin/ingest', adminAuth, ingestLimiter, upload.single('file'), handleAdminIngest);
 router.get('/admin/traces/:traceId', adminAuth, handleGetTrace);
 router.get('/admin/usage', adminAuth, handleGetUsage);
+router.post('/admin/stories/:storyId/backfill', adminAuth, handleBackfillStory);
 
 export default router;
